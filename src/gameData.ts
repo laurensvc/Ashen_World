@@ -281,6 +281,9 @@ export const createStarterState = (): GameState => ({
     villagers: [],
     unlockedHeroes: ['warden'],
   },
+  ui: {
+    sequence: 0,
+  },
   savedAt: Date.now(),
 });
 

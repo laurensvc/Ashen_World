@@ -1,5 +1,7 @@
 import { useEffect, useReducer } from 'react';
-import type { Dispatch as ReactDispatch } from 'react';
+import type { Dispatch as ReactDispatch, ReactNode } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import type { Transition } from 'framer-motion';
 import {
   ArrowRight,
   Castle,
@@ -15,13 +17,35 @@ import {
 } from 'lucide-react';
 import { buildings, cards, enemies, resourceLabels } from './gameData';
 import { canAfford, gameReducer, loadGame, saveGame } from './gameLogic';
-import type { BuildingId, CardDefinition, GameState, MapNode, ResourceId } from './types';
+import type { BuildingId, CardDefinition, CombatPulseType, GameState, MapNode, ResourceId } from './types';
 
 const resourceOrder: ResourceId[] = ['wood', 'iron', 'herbs', 'food', 'relicShards', 'blueprintScraps'];
 const buildingOrder: BuildingId[] = ['forge', 'herbalHut', 'watchtower'];
+const easeOutQuart: [number, number, number, number] = [0.25, 1, 0.5, 1];
+const easeOutQuint: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const fastFade: Transition = { duration: 0.24, ease: easeOutQuart };
+const springyImpact: Transition = { type: 'spring', stiffness: 520, damping: 26, mass: 0.8 };
+const screenVariants = {
+  enter: { opacity: 0, x: 34, filter: 'blur(6px)' },
+  center: { opacity: 1, x: 0, filter: 'blur(0px)' },
+  exit: { opacity: 0, x: -28, filter: 'blur(4px)' },
+};
+const staggerList = {
+  center: {
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.06,
+    },
+  },
+};
+const riseItem = {
+  enter: { opacity: 0, y: 18, scale: 0.97 },
+  center: { opacity: 1, y: 0, scale: 1 },
+};
 
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, undefined, loadGame);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     saveGame(state);
@@ -29,73 +53,88 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand-mark">
+      <motion.header className="topbar" initial={reduceMotion ? false : 'enter'} animate="center" variants={staggerList}>
+        <motion.div className="brand-mark" variants={riseItem} transition={fastFade}>
           <Flame size={20} aria-hidden="true" />
           <div>
             <p>Ashen World</p>
             <span>Playable village run prototype</span>
           </div>
-        </div>
+        </motion.div>
 
-        <ResourceBar state={state} />
+        <ResourceBar state={state} reduceMotion={reduceMotion} />
 
-        <button className="icon-button" type="button" title="Reset saved game" onClick={() => dispatch({ type: 'reset' })}>
+        <motion.button className="icon-button" type="button" title="Reset saved game" variants={riseItem} whileTap={reduceMotion ? undefined : { scale: 0.92 }} onClick={() => dispatch({ type: 'reset' })}>
           <RotateCcw size={18} aria-hidden="true" />
-        </button>
-      </header>
+        </motion.button>
+      </motion.header>
 
-      {state.view === 'village' ? <VillageView state={state} dispatch={dispatch} /> : null}
-      {state.view === 'map' && state.currentRun ? <RunMapView state={state} dispatch={dispatch} /> : null}
-      {state.view === 'combat' && state.currentRun?.combat ? <CombatView state={state} dispatch={dispatch} /> : null}
-      {state.view === 'reward' && state.currentRun?.reward ? <RewardView state={state} dispatch={dispatch} /> : null}
+      <AnimatePresence mode="wait">
+        {state.view === 'village' ? (
+          <VillageView key="village" state={state} dispatch={dispatch} reduceMotion={reduceMotion} />
+        ) : null}
+        {state.view === 'map' && state.currentRun ? (
+          <RunMapView key={`map-${state.currentRun.currentNodeId}`} state={state} dispatch={dispatch} reduceMotion={reduceMotion} />
+        ) : null}
+        {state.view === 'combat' && state.currentRun?.combat ? (
+          <CombatView key={`combat-${state.currentRun.currentNodeId}`} state={state} dispatch={dispatch} reduceMotion={reduceMotion} />
+        ) : null}
+        {state.view === 'reward' && state.currentRun?.reward ? (
+          <RewardView key={`reward-${state.currentRun.reward.sourceNodeId}-${state.ui.sequence}`} state={state} dispatch={dispatch} reduceMotion={reduceMotion} />
+        ) : null}
+      </AnimatePresence>
     </main>
   );
 }
 
-function ResourceBar({ state }: { state: GameState }) {
+function ResourceBar({ state, reduceMotion }: { state: GameState; reduceMotion: boolean | null }) {
   const run = state.currentRun;
   return (
-    <section className="resource-bar" aria-label="Resources">
+    <motion.section className="resource-bar" aria-label="Resources" variants={riseItem} transition={fastFade}>
       {resourceOrder.map((resourceId) => (
-        <div className="resource-pill" key={resourceId}>
+        <motion.div
+          className={`resource-pill ${state.ui.changedResources?.includes(resourceId) ? 'resource-changed' : ''}`}
+          key={resourceId}
+          animate={reduceMotion || !state.ui.changedResources?.includes(resourceId) ? undefined : { scale: [1, 1.16, 1], y: [0, -4, 0] }}
+          transition={{ duration: 0.48, ease: easeOutQuint }}
+        >
           <span>{resourceLabels[resourceId]}</span>
           <strong>{state.village.resources[resourceId]}</strong>
-        </div>
+        </motion.div>
       ))}
       {run ? (
-        <div className="resource-pill run-hp">
+        <motion.div className="resource-pill run-hp" animate={reduceMotion ? undefined : { scale: [1, 1.08, 1] }} transition={{ duration: 0.32 }}>
           <span>Warden HP</span>
           <strong>
             {run.hp}/{run.maxHp}
           </strong>
-        </div>
+        </motion.div>
       ) : null}
-    </section>
+    </motion.section>
   );
 }
 
-function VillageView({ state, dispatch }: ViewProps) {
+function VillageView({ state, dispatch, reduceMotion }: ViewProps) {
   const villagers = state.village.villagers.length ? state.village.villagers.join(', ') : 'No rescued villagers yet';
   const forgeLevel = state.village.buildingLevels.forge;
   const herbalLevel = state.village.buildingLevels.herbalHut;
   const watchtowerLevel = state.village.buildingLevels.watchtower;
 
   return (
-    <section className="screen village-screen">
+    <MotionScreen className="screen village-screen" reduceMotion={reduceMotion}>
       <div className="screen-heading">
         <div>
           <span className="eyebrow">Village</span>
           <h1>The last hearth before the ashen road</h1>
         </div>
-        <button className="primary-action" type="button" onClick={() => dispatch({ type: 'startRun' })}>
+        <motion.button className="primary-action" type="button" whileHover={reduceMotion ? undefined : { scale: 1.03 }} whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={() => dispatch({ type: 'startRun' })}>
           Start run
           <ArrowRight size={18} aria-hidden="true" />
-        </button>
+        </motion.button>
       </div>
 
-      <div className="village-grid">
-        <section className="panel village-summary">
+      <motion.div className="village-grid" initial={reduceMotion ? false : 'enter'} animate="center" variants={staggerList}>
+        <motion.section className="panel village-summary" variants={riseItem} transition={fastFade}>
           <Castle size={28} aria-hidden="true" />
           <h2>Warden Prep</h2>
           <dl>
@@ -116,27 +155,27 @@ function VillageView({ state, dispatch }: ViewProps) {
               <dd>{watchtowerLevel >= 2 ? 'Full route revealed' : watchtowerLevel >= 1 ? 'Two tiers revealed' : 'Next branch only'}</dd>
             </div>
           </dl>
-        </section>
+        </motion.section>
 
         <section className="building-list" aria-label="Buildings">
           {buildingOrder.map((buildingId) => (
-            <BuildingCard key={buildingId} buildingId={buildingId} state={state} dispatch={dispatch} />
+            <BuildingCard key={buildingId} buildingId={buildingId} state={state} dispatch={dispatch} reduceMotion={reduceMotion} />
           ))}
         </section>
 
-        <section className="panel roster-panel">
+        <motion.section className="panel roster-panel" variants={riseItem} transition={fastFade}>
           <h2>Rescued Villagers</h2>
           <p>{villagers}</p>
           <div className="quiet-note">
             Scouts and other survivors are content unlocks, not passive multipliers. Rescue one during a run to bring the map layer online.
           </div>
-        </section>
-      </div>
-    </section>
+        </motion.section>
+      </motion.div>
+    </MotionScreen>
   );
 }
 
-function BuildingCard({ buildingId, state, dispatch }: ViewProps & { buildingId: BuildingId }) {
+function BuildingCard({ buildingId, state, dispatch, reduceMotion }: ViewProps & { buildingId: BuildingId }) {
   const building = buildings[buildingId];
   const level = state.village.buildingLevels[buildingId];
   const nextLevel = level + 1;
@@ -145,15 +184,33 @@ function BuildingCard({ buildingId, state, dispatch }: ViewProps & { buildingId:
   const affordable = !maxed && canAfford(state.village.resources, cost);
   const currentEffect = level > 0 ? building.levelEffects[level] : undefined;
   const nextEffect = !maxed ? building.levelEffects[nextLevel] : undefined;
+  const upgraded = state.ui.lastUpgrade === buildingId && state.ui.lastAction === 'upgrade';
 
   return (
-    <article className="panel building-card">
+    <motion.article
+      className={`panel building-card ${upgraded ? 'is-upgraded' : ''}`}
+      variants={riseItem}
+      transition={upgraded && !reduceMotion ? springyImpact : fastFade}
+      whileHover={reduceMotion ? undefined : { y: -4, scale: 1.012 }}
+      animate={
+        upgraded && !reduceMotion
+          ? {
+              scale: [1, 1.035, 1],
+              boxShadow: ['0 18px 45px rgba(0, 0, 0, 0.22)', '0 22px 70px rgba(224, 154, 84, 0.36)', '0 18px 45px rgba(0, 0, 0, 0.22)'],
+            }
+          : undefined
+      }
+    >
       <div className="card-title-row">
         <div>
           <h2>{building.name}</h2>
-          <span>Level {level}</span>
+          <motion.span animate={upgraded && !reduceMotion ? { scale: [1, 1.5, 1], color: ['#c99457', '#ffe0a8', '#c99457'] } : undefined} transition={{ duration: 0.52 }}>
+            Level {level}
+          </motion.span>
         </div>
-        <Pickaxe size={22} aria-hidden="true" />
+        <motion.div animate={upgraded && !reduceMotion ? { rotate: [0, -24, 18, 0], scale: [1, 1.2, 1] } : undefined} transition={{ duration: 0.56 }}>
+          <Pickaxe size={22} aria-hidden="true" />
+        </motion.div>
       </div>
       <p>{building.description}</p>
       <div className="effect-box">
@@ -166,173 +223,236 @@ function BuildingCard({ buildingId, state, dispatch }: ViewProps & { buildingId:
           <CostLine cost={cost} />
           {nextEffect ? <small>{nextEffect.description}</small> : null}
         </div>
-        <button
+        <motion.button
           className="secondary-action"
           type="button"
           disabled={!affordable}
+          whileHover={reduceMotion || !affordable ? undefined : { scale: 1.04 }}
+          whileTap={reduceMotion || !affordable ? undefined : { scale: 0.92 }}
           onClick={() => dispatch({ type: 'upgradeBuilding', buildingId })}
         >
           Upgrade
-        </button>
+        </motion.button>
       </div>
-    </article>
+    </motion.article>
   );
 }
 
-function RunMapView({ state, dispatch }: ViewProps) {
+function RunMapView({ state, dispatch, reduceMotion }: ViewProps) {
   const run = state.currentRun!;
   const currentNode = run.map.find((node) => node.id === run.currentNodeId)!;
 
   return (
-    <section className="screen">
+    <MotionScreen className="screen" reduceMotion={reduceMotion}>
       <div className="screen-heading compact">
         <div>
           <span className="eyebrow">Run Map</span>
           <h1>The Ashen Road</h1>
         </div>
-        <button className="secondary-action" type="button" onClick={() => dispatch({ type: 'returnToVillage' })}>
+        <motion.button className="secondary-action" type="button" whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={() => dispatch({ type: 'returnToVillage' })}>
           Retreat
-        </button>
+        </motion.button>
       </div>
 
       <div className="map-layout">
-        <section className="panel current-node">
+        <motion.section className="panel current-node" initial={reduceMotion ? false : { opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={fastFade}>
           <Map size={28} aria-hidden="true" />
           <h2>{currentNode.label}</h2>
           <p>{currentNode.type === 'start' ? 'The gate is behind you. Pick the first risk.' : 'Choose a connected revealed node.'}</p>
           <PendingRunRewards state={state} />
-        </section>
+        </motion.section>
 
-        <section className="node-grid" aria-label="Route nodes">
+        <motion.section className="node-grid" aria-label="Route nodes" initial={reduceMotion ? false : 'enter'} animate="center" variants={staggerList}>
           {run.map.map((node) => (
-            <MapNodeButton key={node.id} node={node} currentNode={currentNode} dispatch={dispatch} />
+            <MapNodeButton key={node.id} node={node} currentNode={currentNode} dispatch={dispatch} reduceMotion={reduceMotion} selected={state.ui.selectedNodeId === node.id} />
           ))}
-        </section>
+        </motion.section>
       </div>
-    </section>
+    </MotionScreen>
   );
 }
 
-function MapNodeButton({ node, currentNode, dispatch }: { node: MapNode; currentNode: MapNode; dispatch: Dispatch }) {
+function MapNodeButton({ node, currentNode, dispatch, reduceMotion, selected }: { node: MapNode; currentNode: MapNode; dispatch: Dispatch; reduceMotion: boolean | null; selected: boolean }) {
   const reachable = currentNode.connectedNodeIds.includes(node.id);
   const disabled = !node.revealed || node.resolved || !reachable;
   const Icon = node.type === 'camp' ? Tent : node.type === 'boss' || node.type === 'elite' ? Skull : node.type === 'event' ? Flame : Swords;
   return (
-    <button
+    <motion.button
       className={`map-node tier-${node.tier} ${node.resolved ? 'resolved' : ''} ${reachable ? 'reachable' : ''}`}
       type="button"
       disabled={disabled}
+      variants={riseItem}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.88, y: 16 }}
+      animate={
+        reduceMotion
+          ? undefined
+          : selected
+            ? { opacity: 1, scale: [1, 1.12, 0.96], y: [0, -8, 0] }
+            : reachable && !disabled
+              ? { opacity: 1, scale: [1, 1.025, 1], y: 0 }
+              : { opacity: node.revealed ? 1 : 0.52, scale: 1, y: 0 }
+      }
+      whileHover={reduceMotion || disabled ? undefined : { y: -5, scale: 1.03 }}
+      whileTap={reduceMotion || disabled ? undefined : { scale: 0.92 }}
+      transition={reachable && !disabled ? { repeat: reduceMotion ? 0 : Infinity, repeatDelay: 1.4, duration: 0.9, ease: easeOutQuint } : fastFade}
       onClick={() => dispatch({ type: 'selectNode', nodeId: node.id })}
     >
       <Icon size={20} aria-hidden="true" />
       <strong>{node.revealed ? node.label : 'Unscouted road'}</strong>
       <span>{node.revealed ? node.type : 'hidden'}</span>
-    </button>
+    </motion.button>
   );
 }
 
-function CombatView({ state, dispatch }: ViewProps) {
+function CombatView({ state, dispatch, reduceMotion }: ViewProps) {
   const run = state.currentRun!;
   const combat = run.combat!;
   const enemy = enemies[combat.enemyId];
   const intent = enemy.intents[combat.enemyIntentIndex % enemy.intents.length];
 
+  const pulse = state.ui.combatPulse;
+  const playerPulse = pulse?.target === 'player' ? pulse.type : undefined;
+  const enemyPulse = pulse?.target === 'enemy' ? pulse.type : undefined;
+
   return (
-    <section className="screen combat-screen">
+    <MotionScreen className="screen combat-screen" reduceMotion={reduceMotion}>
       <div className="combat-grid">
-        <section className="panel fighter-panel">
+        <motion.section
+          className={`panel fighter-panel pulse-${playerPulse ?? 'none'}`}
+          initial={reduceMotion ? false : { opacity: 0, x: -42 }}
+          animate={getCombatPanelAnimation(playerPulse, 'player', reduceMotion)}
+          transition={springyImpact}
+        >
           <h2>Warden</h2>
-          <div className="stat-line">
+          <motion.div className="stat-line" animate={playerPulse === 'enemyAttack' && !reduceMotion ? { scale: [1, 1.18, 1] } : undefined} transition={{ duration: 0.28 }}>
             <HeartPulse size={18} aria-hidden="true" />
             <span>
               {run.hp}/{run.maxHp} HP
             </span>
-          </div>
-          <div className="stat-line">
+          </motion.div>
+          <motion.div className="stat-line" animate={(playerPulse === 'block' || playerPulse === 'enemyAttack') && !reduceMotion ? { scale: [1, 1.18, 1] } : undefined} transition={{ duration: 0.32 }}>
             <Shield size={18} aria-hidden="true" />
             <span>{combat.playerBlock} block</span>
-          </div>
+          </motion.div>
           <div className="energy-meter">
             {Array.from({ length: 3 }).map((_, index) => (
-              <span key={index} className={index < combat.energy ? 'filled' : ''} />
+              <motion.span key={index} className={index < combat.energy ? 'filled' : ''} animate={index < combat.energy && !reduceMotion ? { scale: [1, 1.16, 1] } : undefined} transition={{ duration: 0.42, delay: index * 0.04 }} />
             ))}
           </div>
-          <button className="secondary-action full" type="button" onClick={() => dispatch({ type: 'endTurn' })}>
+          <motion.button className="secondary-action full" type="button" whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={() => dispatch({ type: 'endTurn' })}>
             End turn
-          </button>
-        </section>
+          </motion.button>
+        </motion.section>
 
-        <section className="panel enemy-panel">
+        <motion.section
+          className={`panel enemy-panel pulse-${enemyPulse ?? 'none'}`}
+          initial={reduceMotion ? false : { opacity: 0, x: 52, scale: 0.97 }}
+          animate={getCombatPanelAnimation(enemyPulse, 'enemy', reduceMotion)}
+          transition={springyImpact}
+        >
           <span className="eyebrow">{enemy.role}</span>
           <h1>{enemy.name}</h1>
           <div className="enemy-stats">
-            <span>{combat.enemyHp} HP</span>
-            <span>{combat.enemyBlock} block</span>
-            <span>{combat.enemyPoison} poison</span>
+            <motion.span animate={enemyPulse === 'damage' && !reduceMotion ? { scale: [1, 1.24, 1] } : undefined}>{combat.enemyHp} HP</motion.span>
+            <motion.span animate={enemyPulse === 'enemyBlock' && !reduceMotion ? { scale: [1, 1.22, 1] } : undefined}>{combat.enemyBlock} block</motion.span>
+            <motion.span animate={(enemyPulse === 'poison' || enemyPulse === 'enemyPoison') && !reduceMotion ? { scale: [1, 1.25, 1] } : undefined}>{combat.enemyPoison} poison</motion.span>
           </div>
-          <div className="intent-box">
+          <motion.div className="intent-box" animate={!reduceMotion ? { scale: [1, 1.03, 1] } : undefined} transition={{ duration: 0.38, delay: 0.08 }}>
             <strong>Intent</strong>
             <span>{intent.label}</span>
-          </div>
-        </section>
+          </motion.div>
+        </motion.section>
 
-        <section className="panel combat-log">
+        <motion.section className="panel combat-log" initial={reduceMotion ? false : { opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} transition={fastFade}>
           <h2>Combat Log</h2>
-          {combat.log.map((entry, index) => (
-            <p key={`${entry}-${index}`}>{entry}</p>
-          ))}
-        </section>
+          <AnimatePresence initial={false}>
+            {combat.log.map((entry, index) => (
+              <motion.p key={`${entry}-${index}`} initial={reduceMotion ? false : { opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+                {entry}
+              </motion.p>
+            ))}
+          </AnimatePresence>
+        </motion.section>
       </div>
 
-      <section className="hand-row" aria-label="Hand">
-        {combat.hand.map((cardId, index) => (
-          <CardButton key={`${cardId}-${index}`} card={cards[cardId]} disabled={cards[cardId].cost > combat.energy} onClick={() => dispatch({ type: 'playCard', handIndex: index })} />
-        ))}
-      </section>
-    </section>
+      <motion.section className="hand-row" aria-label="Hand" initial={reduceMotion ? false : 'enter'} animate="center" variants={staggerList}>
+        <AnimatePresence initial={false}>
+          {combat.hand.map((cardId, index) => (
+            <CardButton
+              key={`${cardId}-${index}-${combat.enemyIntentIndex}`}
+              card={cards[cardId]}
+              disabled={cards[cardId].cost > combat.energy}
+              reduceMotion={reduceMotion}
+              selected={state.ui.combatPulse?.cardId === cardId}
+              onClick={() => dispatch({ type: 'playCard', handIndex: index })}
+            />
+          ))}
+        </AnimatePresence>
+      </motion.section>
+    </MotionScreen>
   );
 }
 
-function CardButton({ card, disabled, onClick }: { card: CardDefinition; disabled?: boolean; onClick?: () => void }) {
+function CardButton({ card, disabled, selected, rewardTilt = 0, reduceMotion, onClick }: { card: CardDefinition; disabled?: boolean; selected?: boolean; rewardTilt?: number; reduceMotion?: boolean | null; onClick?: () => void }) {
   return (
-    <button className={`card-button ${card.type}`} type="button" disabled={disabled} onClick={onClick}>
+    <motion.button
+      className={`card-button ${card.type}`}
+      type="button"
+      disabled={disabled}
+      variants={riseItem}
+      initial={reduceMotion ? false : { opacity: 0, y: 28, rotate: rewardTilt, scale: 0.94 }}
+      animate={
+        selected && !reduceMotion
+          ? { opacity: 1, y: [-8, -34, 0], rotate: [rewardTilt, rewardTilt * 0.4, 0], scale: [1, 1.14, 1] }
+          : { opacity: 1, y: 0, rotate: rewardTilt, scale: 1 }
+      }
+      exit={reduceMotion ? undefined : { opacity: 0, y: -34, rotate: rewardTilt * -1, scale: 0.88 }}
+      whileHover={reduceMotion || disabled ? undefined : { y: -8, rotate: rewardTilt * 0.35, scale: 1.035 }}
+      whileTap={reduceMotion || disabled ? undefined : { scale: 0.9, y: -2 }}
+      transition={springyImpact}
+      onClick={onClick}
+    >
       <div className="card-cost">{card.cost}</div>
       <strong>{card.name}</strong>
       <span>{card.type}</span>
       <p>{card.description}</p>
-    </button>
+    </motion.button>
   );
 }
 
-function RewardView({ state, dispatch }: ViewProps) {
+function RewardView({ state, dispatch, reduceMotion }: ViewProps) {
   const run = state.currentRun!;
   const reward = run.reward!;
 
   return (
-    <section className="screen reward-screen">
-      <div className="reward-panel">
-        <span className="eyebrow">Reward</span>
-        <h1>{reward.title}</h1>
-        <p>{reward.message}</p>
+    <MotionScreen className="screen reward-screen" reduceMotion={reduceMotion}>
+      <motion.div className="reward-panel" initial={reduceMotion ? false : { opacity: 0, y: 38, scale: 0.94 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -24, scale: 0.96 }} transition={springyImpact}>
+          <motion.span className="eyebrow" initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.08 }}>Reward</motion.span>
+        <motion.h1 initial={reduceMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ ...fastFade, delay: 0.1 }}>{reward.title}</motion.h1>
+        <motion.p initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...fastFade, delay: 0.16 }}>{reward.message}</motion.p>
 
         <div className="reward-columns">
           <section>
             <h2>Gained</h2>
-            <CostLine cost={reward.resources} />
-            {reward.villager ? <p className="villager-chip">Villager rescued: {reward.villager}</p> : null}
+            <CostLine cost={reward.resources} animated reduceMotion={reduceMotion} />
+            {reward.villager ? (
+              <motion.p className="villager-chip" initial={reduceMotion ? false : { opacity: 0, scale: 0.76 }} animate={{ opacity: 1, scale: 1 }} transition={{ ...springyImpact, delay: 0.18 }}>
+                Villager rescued: {reward.villager}
+              </motion.p>
+            ) : null}
           </section>
 
           {reward.cardOptions.length ? (
             <section>
               <h2>Choose a card</h2>
               <div className="reward-cards">
-                {reward.cardOptions.map((cardId) => (
-                  <CardButton key={cardId} card={cards[cardId]} onClick={() => dispatch({ type: 'chooseCardReward', cardId })} />
+                {reward.cardOptions.map((cardId, index) => (
+                  <CardButton key={cardId} card={cards[cardId]} selected={state.ui.chosenCardId === cardId} rewardTilt={(index - 1) * 3} reduceMotion={reduceMotion} onClick={() => dispatch({ type: 'chooseCardReward', cardId })} />
                 ))}
               </div>
-              <button className="text-action" type="button" onClick={() => dispatch({ type: 'skipCardReward' })}>
+              <motion.button className="text-action" type="button" whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={() => dispatch({ type: 'skipCardReward' })}>
                 Skip card reward
-              </button>
+              </motion.button>
             </section>
           ) : (
             <section>
@@ -342,12 +462,12 @@ function RewardView({ state, dispatch }: ViewProps) {
           )}
         </div>
 
-        <button className="primary-action" type="button" onClick={() => dispatch({ type: 'continueFromReward' })}>
+        <motion.button className="primary-action" type="button" whileHover={reduceMotion ? undefined : { scale: 1.03 }} whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={() => dispatch({ type: 'continueFromReward' })}>
           {reward.nextView === 'village' ? 'Return to village' : 'Continue'}
           <ArrowRight size={18} aria-hidden="true" />
-        </button>
-      </div>
-    </section>
+        </motion.button>
+      </motion.div>
+    </MotionScreen>
   );
 }
 
@@ -362,22 +482,53 @@ function PendingRunRewards({ state }: { state: GameState }) {
   );
 }
 
-function CostLine({ cost }: { cost: Partial<Record<ResourceId, number>> }) {
+function CostLine({ cost, animated, reduceMotion }: { cost: Partial<Record<ResourceId, number>>; animated?: boolean; reduceMotion?: boolean | null }) {
   const entries = resourceOrder.filter((resourceId) => (cost[resourceId] ?? 0) > 0);
   if (!entries.length) return <span className="cost-line">None</span>;
   return (
     <span className="cost-line">
-      {entries.map((resourceId) => (
-        <span key={resourceId}>
+      {entries.map((resourceId, index) => (
+        <motion.span
+          key={resourceId}
+          initial={animated && !reduceMotion ? { opacity: 0, scale: 0.62, y: 8 } : false}
+          animate={animated && !reduceMotion ? { opacity: 1, scale: [0.62, 1.18, 1], y: 0 } : undefined}
+          transition={{ duration: 0.42, delay: index * 0.08, ease: easeOutQuint }}
+        >
           {resourceLabels[resourceId]} {cost[resourceId]}
-        </span>
+        </motion.span>
       ))}
     </span>
   );
+}
+
+function MotionScreen({ className, reduceMotion, children }: { className: string; reduceMotion?: boolean | null; children: ReactNode }) {
+  return (
+    <motion.section
+      className={className}
+      initial={reduceMotion ? false : 'enter'}
+      animate="center"
+      exit={reduceMotion ? undefined : 'exit'}
+      variants={screenVariants}
+      transition={fastFade}
+    >
+      {children}
+    </motion.section>
+  );
+}
+
+function getCombatPanelAnimation(pulse: CombatPulseType | undefined, side: 'player' | 'enemy', reduceMotion: boolean | null) {
+  if (reduceMotion) return { opacity: 1, x: 0, scale: 1 };
+  if (pulse === 'damage') return { opacity: 1, x: [0, side === 'enemy' ? 18 : -18, side === 'enemy' ? -10 : 10, 0], scale: [1, 1.035, 1] };
+  if (pulse === 'enemyAttack') return { opacity: 1, x: [0, side === 'player' ? -18 : 18, side === 'player' ? 10 : -10, 0], scale: [1, 1.03, 1] };
+  if (pulse === 'block' || pulse === 'enemyBlock') return { opacity: 1, x: 0, scale: [1, 1.045, 1] };
+  if (pulse === 'poison' || pulse === 'enemyPoison') return { opacity: 1, x: [0, -5, 5, 0], scale: [1, 1.025, 1] };
+  if (pulse === 'victory') return { opacity: [1, 0.82, 1], x: [0, 26, -14, 0], scale: [1, 0.96, 1] };
+  return { opacity: 1, x: 0, scale: 1 };
 }
 
 type Dispatch = ReactDispatch<Parameters<typeof gameReducer>[1]>;
 type ViewProps = {
   state: GameState;
   dispatch: Dispatch;
+  reduceMotion: boolean | null;
 };

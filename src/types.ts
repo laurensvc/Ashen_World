@@ -4,6 +4,7 @@ export type HeroId = 'warden';
 export type CardType = 'attack' | 'defense' | 'utility' | 'status';
 export type NodeType = 'start' | 'combat' | 'elite' | 'event' | 'camp' | 'boss';
 export type View = 'village' | 'map' | 'combat' | 'reward';
+export type CombatPulseType = 'damage' | 'block' | 'heal' | 'poison' | 'draw' | 'enemyAttack' | 'enemyBlock' | 'enemyPoison' | 'victory';
 
 export type Resources = Record<ResourceId, number>;
 
@@ -121,5 +122,18 @@ export interface GameState {
   view: View;
   village: VillageState;
   currentRun?: RunState;
+  ui: {
+    sequence: number;
+    lastAction?: string;
+    lastUpgrade?: BuildingId;
+    changedResources?: ResourceId[];
+    selectedNodeId?: string;
+    chosenCardId?: string;
+    combatPulse?: {
+      type: CombatPulseType;
+      cardId?: string;
+      target: 'player' | 'enemy' | 'hand' | 'reward';
+    };
+  };
   savedAt: number;
 }
