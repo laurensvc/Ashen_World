@@ -1,3 +1,14 @@
+import { campRewardsByNodeId, defaultCampReward, eventsById, resolveEventReward } from './content/events';
+import { autoRevealCapTier } from './content/map';
+import { narrative } from './content/narrative';
+import {
+  buildStartingDeck,
+  combatBalance,
+  computeRewardPoolRotationOffset,
+  rewardPoolExcludeForDraft,
+  rewardPoolExcludeForVillage,
+  runBalance,
+} from './content/run';
 import { buildings, cards, createRunMap, createStarterState, enemies, emptyResources } from './gameData';
 import type {
   BuildingId,
@@ -8,13 +19,35 @@ import type {
   MapNode,
   ResourceId,
   Resources,
-  RewardState,
   RunState,
 } from './types';
 
 const SAVE_KEY = 'ashen-world-save-v1';
-const handSize = 5;
-const turnEnergy = 3;
+
+let combatHandSlotSeq = 0;
+const newHandSlotId = (): string => {
+  combatHandSlotSeq += 1;
+  return `hand-${combatHandSlotSeq}`;
+};
+
+const normalizeCombatHandSlots = (state: GameState): GameState => {
+  const run = state.currentRun;
+  if (!run?.combat) return state;
+  const combat = run.combat;
+  const { hand } = combat;
+  const prev = (combat as { handSlotIds?: string[] }).handSlotIds;
+  if (Array.isArray(prev) && prev.length === hand.length) return state;
+  return {
+    ...state,
+    currentRun: {
+      ...run,
+      combat: {
+        ...combat,
+        handSlotIds: hand.map((_, i) => (Array.isArray(prev) ? prev[i] : undefined) ?? newHandSlotId()),
+      },
+    },
+  };
+};
 
 export type GameAction =
   | { type: 'upgradeBuilding'; buildingId: BuildingId }
@@ -34,7 +67,8 @@ export const loadGame = (): GameState => {
     if (!raw) return createStarterState();
     const parsed = JSON.parse(raw) as GameState;
     if (!parsed.village || !parsed.view) return createStarterState();
-    return { ...parsed, ui: parsed.ui ?? { sequence: 0 } };
+    const merged = { ...parsed, ui: parsed.ui ?? { sequence: 0 } } as GameState;
+    return normalizeCombatHandSlots(merged);
   } catch {
     return createStarterState();
   }
@@ -105,7 +139,7 @@ export const subtractResources = (base: Resources, cost: Partial<Resources>): Re
 
 export const getAvailableRewardCards = (buildingLevels: Record<BuildingId, number>) =>
   Object.values(cards).filter((card) => {
-    if (['strike', 'guard', 'quickStep', 'villageTool'].includes(card.id)) return false;
+    if (rewardPoolExcludeForVillage.includes(card.id)) return false;
     if (!card.unlock) return true;
     return buildingLevels[card.unlock.building] >= card.unlock.level;
   });
@@ -119,40 +153,34 @@ const upgradeBuilding = (state: GameState, buildingId: BuildingId): GameState =>
   const cost = definition.upgradeCosts[nextLevel] ?? {};
   if (!canAfford(state.village.resources, cost)) return state;
 
-  return withUi({
-    ...state,
-    village: {
-      ...state.village,
-      resources: subtractResources(state.village.resources, cost),
-      buildingLevels: {
-        ...state.village.buildingLevels,
-        [buildingId]: nextLevel,
+  return withUi(
+    {
+      ...state,
+      village: {
+        ...state.village,
+        resources: subtractResources(state.village.resources, cost),
+        buildingLevels: {
+          ...state.village.buildingLevels,
+          [buildingId]: nextLevel,
+        },
       },
     },
-  }, {
-    lastAction: 'upgrade',
-    lastUpgrade: buildingId,
-    changedResources: Object.keys(cost) as ResourceId[],
-  });
+    {
+      lastAction: 'upgrade',
+      lastUpgrade: buildingId,
+      changedResources: Object.keys(cost) as ResourceId[],
+    },
+  );
 };
 
 const startRun = (state: GameState): GameState => {
   const buildingLevels = state.village.buildingLevels;
-  const deck = ['strike', 'strike', 'strike', 'strike', 'guard', 'guard', 'guard', 'guard', 'quickStep', 'villageTool'];
-
-  if (buildingLevels.forge >= 1) {
-    deck.splice(deck.indexOf('strike'), 1, 'ironStrike');
-    deck.splice(deck.indexOf('strike'), 1, 'ironStrike');
-  }
-
-  if (buildingLevels.herbalHut >= 1) {
-    deck.push('herbalPoultice');
-  }
+  const deck = buildStartingDeck(buildingLevels);
 
   const run: RunState = {
-    hero: 'warden',
-    maxHp: 52,
-    hp: 52,
+    hero: runBalance.heroId,
+    maxHp: runBalance.maxHp,
+    hp: runBalance.maxHp,
     deck,
     relics: [],
     map: createRunMap(buildingLevels.watchtower),
@@ -186,48 +214,63 @@ const selectNode = (state: GameState, nodeId: string): GameState => {
   };
 
   if (node.type === 'combat' || node.type === 'elite' || node.type === 'boss') {
-    return withUi({
-      ...state,
-      view: 'combat',
-      currentRun: {
-        ...updatedRun,
-        combat: createCombat(node.enemyId ?? 'ashStalker', updatedRun.deck),
+    return withUi(
+      {
+        ...state,
+        view: 'combat',
+        currentRun: {
+          ...updatedRun,
+          combat: createCombat(node.enemyId ?? runBalance.fallbackEnemyId, updatedRun.deck),
+        },
       },
-    }, { lastAction: 'selectNode', selectedNodeId: nodeId });
+      { lastAction: 'selectNode', selectedNodeId: nodeId },
+    );
   }
 
   if (node.type === 'camp') {
-    return withUi({
+    const camp = campRewardsByNodeId[node.id] ?? defaultCampReward;
+    return withUi(
+      {
+        ...state,
+        view: 'reward',
+        currentRun: {
+          ...updatedRun,
+          hp: Math.min(updatedRun.maxHp, updatedRun.hp + camp.healHp),
+          reward: {
+            sourceNodeId: node.id,
+            title: camp.title,
+            message: camp.message,
+            cardOptions: [],
+            resources: camp.resources,
+            nextView: 'map',
+          },
+        },
+      },
+      { lastAction: 'camp', selectedNodeId: nodeId, combatPulse: { type: 'heal', target: 'player' } },
+    );
+  }
+
+  const eventDef = node.eventId ? eventsById[node.eventId] : undefined;
+  const villagerAlreadyRescued = eventDef?.villagerName
+    ? state.village.villagers.includes(eventDef.villagerName)
+    : false;
+
+  return withUi(
+    {
       ...state,
       view: 'reward',
       currentRun: {
         ...updatedRun,
-        hp: Math.min(updatedRun.maxHp, updatedRun.hp + 12),
-        reward: {
-          sourceNodeId: node.id,
-          title: 'Cold Camp',
-          message: 'The Warden binds wounds beside a fire that gives no warmth.',
-          cardOptions: [],
-          resources: { food: 2 },
-          nextView: 'map',
-        },
+        reward: resolveEventReward(node.id, node.eventId, villagerAlreadyRescued),
       },
-    }, { lastAction: 'camp', selectedNodeId: nodeId, combatPulse: { type: 'heal', target: 'player' } });
-  }
-
-  return withUi({
-    ...state,
-    view: 'reward',
-    currentRun: {
-      ...updatedRun,
-      reward: createEventReward(node.id, state.village.villagers.includes('Scout')),
     },
-  }, { lastAction: 'event', selectedNodeId: nodeId });
+    { lastAction: 'event', selectedNodeId: nodeId },
+  );
 };
 
 const createCombat = (enemyId: string, deck: string[]): CombatState => {
-  const drawPile = rotate(deck, 3);
-  const initial = drawCards([], drawPile, [], handSize);
+  const drawPile = rotate(deck, combatBalance.combatDrawRotate);
+  const initial = drawCards([], [], drawPile, [], combatBalance.handSize);
   return {
     enemyId,
     enemyHp: enemies[enemyId].maxHp,
@@ -236,8 +279,9 @@ const createCombat = (enemyId: string, deck: string[]): CombatState => {
     enemyIntentIndex: 0,
     playerBlock: 0,
     playerPoison: 0,
-    energy: turnEnergy,
+    energy: combatBalance.turnEnergy,
     hand: initial.hand,
+    handSlotIds: initial.handSlotIds,
     drawPile: initial.drawPile,
     discardPile: initial.discardPile,
     exhausted: [],
@@ -258,8 +302,9 @@ const playCard = (state: GameState, handIndex: number): GameState => {
     ...combat,
     energy: combat.energy - card.cost,
     hand: combat.hand.filter((_, index) => index !== handIndex),
-    discardPile: card.id === 'herbalPoultice' ? combat.discardPile : [...combat.discardPile, cardId],
-    exhausted: card.id === 'herbalPoultice' ? [...combat.exhausted, cardId] : combat.exhausted,
+    handSlotIds: combat.handSlotIds.filter((_, index) => index !== handIndex),
+    discardPile: card.exhaust ? combat.discardPile : [...combat.discardPile, cardId],
+    exhausted: card.exhaust ? [...combat.exhausted, cardId] : combat.exhausted,
     log: [`Played ${card.name}.`, ...combat.log].slice(0, 6),
   };
 
@@ -279,19 +324,30 @@ const playCard = (state: GameState, handIndex: number): GameState => {
     });
   }
 
-  return withUi({
-    ...state,
-    currentRun: {
-      ...nextRun,
-      combat: nextCombat,
+  return withUi(
+    {
+      ...state,
+      currentRun: {
+        ...nextRun,
+        combat: nextCombat,
+      },
     },
-  }, {
-    lastAction: 'playCard',
-    combatPulse: { type: pulse, cardId, target: pulse === 'block' || pulse === 'heal' || pulse === 'draw' ? 'player' : 'enemy' },
-  });
+    {
+      lastAction: 'playCard',
+      combatPulse: {
+        type: pulse,
+        cardId,
+        target: pulse === 'block' || pulse === 'heal' || pulse === 'draw' ? 'player' : 'enemy',
+      },
+    },
+  );
 };
 
-const applyCardEffect = (run: RunState, combat: CombatState, effect: CardEffect): { run: RunState; combat: CombatState } => {
+const applyCardEffect = (
+  run: RunState,
+  combat: CombatState,
+  effect: CardEffect,
+): { run: RunState; combat: CombatState } => {
   switch (effect.type) {
     case 'damage': {
       const remainingBlock = Math.max(0, combat.enemyBlock - effect.amount);
@@ -333,12 +389,13 @@ const applyCardEffect = (run: RunState, combat: CombatState, effect: CardEffect)
         },
       };
     case 'draw': {
-      const drawn = drawCards(combat.hand, combat.drawPile, combat.discardPile, effect.amount);
+      const drawn = drawCards(combat.hand, combat.handSlotIds, combat.drawPile, combat.discardPile, effect.amount);
       return {
         run,
         combat: {
           ...combat,
           hand: drawn.hand,
+          handSlotIds: drawn.handSlotIds,
           drawPile: drawn.drawPile,
           discardPile: drawn.discardPile,
           log: [`Drew ${effect.amount} card.`, ...combat.log].slice(0, 6),
@@ -369,10 +426,13 @@ const endTurn = (state: GameState): GameState => {
   }
 
   if (enemyHp <= 0) {
-    return withUi(finishCombat(state, run, { ...combat, enemyHp, enemyPoison, log: [...log, ...combat.log].slice(0, 6) }), {
-      lastAction: 'victory',
-      combatPulse: { type: 'victory', target: 'enemy' },
-    });
+    return withUi(
+      finishCombat(state, run, { ...combat, enemyHp, enemyPoison, log: [...log, ...combat.log].slice(0, 6) }),
+      {
+        lastAction: 'victory',
+        combatPulse: { type: 'victory', target: 'enemy' },
+      },
+    );
   }
 
   let hp = run.hp;
@@ -403,48 +463,64 @@ const endTurn = (state: GameState): GameState => {
   }
 
   if (hp <= 0) {
-    return withUi({
-      ...state,
-      view: 'reward',
-      currentRun: {
-        ...run,
-        hp: 0,
-        combat: undefined,
-        reward: {
-          sourceNodeId: run.currentNodeId,
-          title: 'The road takes its due',
-          message: 'The Warden returns broken, carrying only what could be dragged from the ash.',
-          cardOptions: [],
-          resources: run.pendingRewards,
-          nextView: 'village',
+    return withUi(
+      {
+        ...state,
+        view: 'reward',
+        currentRun: {
+          ...run,
+          hp: 0,
+          combat: undefined,
+          reward: {
+            sourceNodeId: run.currentNodeId,
+            title: narrative.runDefeat.title,
+            message: narrative.runDefeat.message,
+            cardOptions: [],
+            resources: run.pendingRewards,
+            nextView: 'village',
+          },
         },
       },
-    }, { lastAction: 'defeat', combatPulse: { type: 'enemyAttack', target: 'player' } });
+      { lastAction: 'defeat', combatPulse: { type: 'enemyAttack', target: 'player' } },
+    );
   }
 
-  const drawn = drawCards([], [...combat.drawPile], [...combat.discardPile, ...combat.hand], handSize);
+  const drawn = drawCards(
+    [],
+    [],
+    [...combat.drawPile],
+    [...combat.discardPile, ...combat.hand],
+    combatBalance.handSize,
+  );
 
-  return withUi({
-    ...state,
-    currentRun: {
-      ...run,
-      hp,
-      combat: {
-        ...combat,
-        enemyHp,
-        enemyBlock,
-        enemyPoison,
-        playerBlock,
-        playerPoison,
-        energy: turnEnergy,
-        hand: drawn.hand,
-        drawPile: drawn.drawPile,
-        discardPile: drawn.discardPile,
-        enemyIntentIndex: combat.enemyIntentIndex + 1,
-        log: [...log, 'New turn.', ...combat.log].slice(0, 6),
+  return withUi(
+    {
+      ...state,
+      currentRun: {
+        ...run,
+        hp,
+        combat: {
+          ...combat,
+          enemyHp,
+          enemyBlock,
+          enemyPoison,
+          playerBlock,
+          playerPoison,
+          energy: combatBalance.turnEnergy,
+          hand: drawn.hand,
+          handSlotIds: drawn.handSlotIds,
+          drawPile: drawn.drawPile,
+          discardPile: drawn.discardPile,
+          enemyIntentIndex: combat.enemyIntentIndex + 1,
+          log: [...log, 'New turn.', ...combat.log].slice(0, 6),
+        },
       },
     },
-  }, { lastAction: 'endTurn', combatPulse: { type: getIntentPulse(intent), target: intent.damage ? 'player' : 'enemy' } });
+    {
+      lastAction: 'endTurn',
+      combatPulse: { type: getIntentPulse(intent), target: intent.damage ? 'player' : 'enemy' },
+    },
+  );
 };
 
 const finishCombat = (state: GameState, run: RunState, combat: CombatState): GameState => {
@@ -464,10 +540,7 @@ const finishCombat = (state: GameState, run: RunState, combat: CombatState): Gam
       reward: {
         sourceNodeId: run.currentNodeId,
         title: `${enemy.name} defeated`,
-        message:
-          node?.type === 'boss'
-            ? 'The Ash Knight falls. A blueprint plate is pried from the blackened armor.'
-            : 'The road quiets. Choose what the Warden carries forward.',
+        message: node?.type === 'boss' ? narrative.combatVictory.bossMessage : narrative.combatVictory.defaultMessage,
         cardOptions,
         resources: rewardResources,
         nextView: node?.type === 'boss' ? 'village' : 'map',
@@ -479,17 +552,24 @@ const finishCombat = (state: GameState, run: RunState, combat: CombatState): Gam
 const chooseCardReward = (state: GameState, cardId?: string): GameState => {
   const run = state.currentRun;
   if (!run?.reward) return state;
-  return withUi({
-    ...state,
-    currentRun: {
-      ...run,
-      deck: cardId ? [...run.deck, cardId] : run.deck,
-      reward: {
-        ...run.reward,
-        cardOptions: [],
+  return withUi(
+    {
+      ...state,
+      currentRun: {
+        ...run,
+        deck: cardId ? [...run.deck, cardId] : run.deck,
+        reward: {
+          ...run.reward,
+          cardOptions: [],
+        },
       },
     },
-  }, { lastAction: cardId ? 'chooseCard' : 'skipCard', chosenCardId: cardId, combatPulse: { type: 'draw', cardId, target: 'reward' } });
+    {
+      lastAction: cardId ? 'chooseCard' : 'skipCard',
+      chosenCardId: cardId,
+      combatPulse: { type: 'draw', cardId, target: 'reward' },
+    },
+  );
 };
 
 const continueFromReward = (state: GameState): GameState => {
@@ -504,20 +584,25 @@ const continueFromReward = (state: GameState): GameState => {
   const node = findNode(run, reward.sourceNodeId);
   const shouldBankReward = node?.type === 'event' || node?.type === 'camp';
 
-  return withUi({
-    ...state,
-    view: 'map',
-    currentRun: {
-      ...markCurrentNodeResolved(run),
-      pendingRewards: shouldBankReward ? addResources(run.pendingRewards as Resources, reward.resources) : run.pendingRewards,
-      pendingVillagers:
-        shouldBankReward && reward.villager && !run.pendingVillagers.includes(reward.villager)
-          ? [...run.pendingVillagers, reward.villager]
-          : run.pendingVillagers,
-      map: revealReachableNodes(run.map, run.currentNodeId, state.village.buildingLevels.watchtower),
-      reward: undefined,
+  return withUi(
+    {
+      ...state,
+      view: 'map',
+      currentRun: {
+        ...markCurrentNodeResolved(run),
+        pendingRewards: shouldBankReward
+          ? addResources(run.pendingRewards as Resources, reward.resources)
+          : run.pendingRewards,
+        pendingVillagers:
+          shouldBankReward && reward.villager && !run.pendingVillagers.includes(reward.villager)
+            ? [...run.pendingVillagers, reward.villager]
+            : run.pendingVillagers,
+        map: revealReachableNodes(run.map, run.currentNodeId, state.village.buildingLevels.watchtower),
+        reward: undefined,
+      },
     },
-  }, { lastAction: 'continueFromReward', changedResources: Object.keys(reward.resources) as ResourceId[] });
+    { lastAction: 'continueFromReward', changedResources: Object.keys(reward.resources) as ResourceId[] },
+  );
 };
 
 const returnToVillage = (state: GameState): GameState => {
@@ -529,16 +614,19 @@ const returnToVillage = (state: GameState): GameState => {
   const pendingVillagers = [...run.pendingVillagers, ...(villager ? [villager] : [])];
   const villagers = Array.from(new Set([...state.village.villagers, ...pendingVillagers]));
 
-  return withUi({
-    ...state,
-    view: 'village',
-    village: {
-      ...state.village,
-      resources: addResources(state.village.resources, run.pendingRewards),
-      villagers,
+  return withUi(
+    {
+      ...state,
+      view: 'village',
+      village: {
+        ...state.village,
+        resources: addResources(state.village.resources, run.pendingRewards),
+        villagers,
+      },
+      currentRun: undefined,
     },
-    currentRun: undefined,
-  }, { lastAction: 'returnToVillage', changedResources: Object.keys(run.pendingRewards) as ResourceId[] });
+    { lastAction: 'returnToVillage', changedResources: Object.keys(run.pendingRewards) as ResourceId[] },
+  );
 };
 
 const getCardPulse = (effects: CardEffect[]): CombatPulseType => {
@@ -555,28 +643,18 @@ const getIntentPulse = (intent: { damage?: number; block?: number; poison?: numb
   return 'enemyBlock';
 };
 
-const createEventReward = (sourceNodeId: string, scoutAlreadyRescued: boolean): RewardState => ({
-  sourceNodeId,
-  title: scoutAlreadyRescued ? 'Buried waystones' : 'Lantern in the Brambles',
-  message: scoutAlreadyRescued
-    ? 'The Scout marks old stones that lead to a cache under the road.'
-    : 'A trapped Scout swears service to the village if escorted home.',
-  cardOptions: [],
-  resources: scoutAlreadyRescued ? { wood: 4, iron: 2 } : { food: 2, wood: 2 },
-  villager: scoutAlreadyRescued ? undefined : 'Scout',
-  nextView: 'map',
-});
-
 const markCurrentNodeResolved = (run: RunState): RunState => ({
   ...run,
-  completedNodeIds: run.completedNodeIds.includes(run.currentNodeId) ? run.completedNodeIds : [...run.completedNodeIds, run.currentNodeId],
+  completedNodeIds: run.completedNodeIds.includes(run.currentNodeId)
+    ? run.completedNodeIds
+    : [...run.completedNodeIds, run.currentNodeId],
   map: run.map.map((node) => (node.id === run.currentNodeId ? { ...node, resolved: true } : node)),
 });
 
 const revealReachableNodes = (map: MapNode[], currentNodeId: string, watchtowerLevel: number): MapNode[] => {
   const current = map.find((node) => node.id === currentNodeId);
   if (!current) return map;
-  const autoRevealTier = watchtowerLevel >= 2 ? 4 : watchtowerLevel >= 1 ? current.tier + 2 : current.tier + 1;
+  const autoRevealTier = autoRevealCapTier(watchtowerLevel, current.tier);
   const nextIds = new Set(current.connectedNodeIds);
   return map.map((node) => ({
     ...node,
@@ -584,42 +662,52 @@ const revealReachableNodes = (map: MapNode[], currentNodeId: string, watchtowerL
   }));
 };
 
-const drawCards = (hand: string[], drawPile: string[], discardPile: string[], count: number) => {
+const drawCards = (
+  hand: string[],
+  handSlotIds: string[],
+  drawPile: string[],
+  discardPile: string[],
+  count: number,
+): { hand: string[]; handSlotIds: string[]; drawPile: string[]; discardPile: string[] } => {
   const nextHand = [...hand];
+  const nextSlotIds = [...handSlotIds];
   let nextDraw = [...drawPile];
   let nextDiscard = [...discardPile];
 
   for (let i = 0; i < count; i += 1) {
     if (nextDraw.length === 0) {
-      nextDraw = rotate(nextDiscard, 2);
+      nextDraw = rotate(nextDiscard, combatBalance.discardReshuffleRotate);
       nextDiscard = [];
     }
     const drawn = nextDraw.shift();
-    if (drawn) nextHand.push(drawn);
+    if (drawn) {
+      nextHand.push(drawn);
+      nextSlotIds.push(newHandSlotId());
+    }
   }
 
-  return { hand: nextHand, drawPile: nextDraw, discardPile: nextDiscard };
+  return { hand: nextHand, handSlotIds: nextSlotIds, drawPile: nextDraw, discardPile: nextDiscard };
 };
 
 const pickCardRewards = (buildingLevels: Record<BuildingId, number>) => {
   const pool = getRewardPool(buildingLevels);
-  return pool.slice(0, 3).map((card) => card.id);
+  return pool.slice(0, runBalance.rewardPickCount).map((card) => card.id);
 };
 
 const getRewardPool = (buildingLevels: Record<BuildingId, number>) => {
   const unlocked = Object.values(cards).filter((card) => {
-    if (['strike', 'guard'].includes(card.id)) return false;
+    if (rewardPoolExcludeForDraft.includes(card.id)) return false;
     if (!card.unlock) return true;
     return buildingLevels[card.unlock.building] >= card.unlock.level;
   });
 
-  const offset = buildingLevels.forge + buildingLevels.herbalHut * 2 + buildingLevels.watchtower;
+  const offset = computeRewardPoolRotationOffset(buildingLevels);
   return rotate(unlocked, offset);
 };
 
 const findNode = (run: RunState, nodeId: string) => run.map.find((node) => node.id === nodeId);
 
-const rotate = <T,>(items: T[], offset: number): T[] => {
+const rotate = <T>(items: T[], offset: number): T[] => {
   if (items.length === 0) return [];
   const normalized = offset % items.length;
   return [...items.slice(normalized), ...items.slice(0, normalized)];

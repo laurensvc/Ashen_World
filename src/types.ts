@@ -4,7 +4,16 @@ export type HeroId = 'warden';
 export type CardType = 'attack' | 'defense' | 'utility' | 'status';
 export type NodeType = 'start' | 'combat' | 'elite' | 'event' | 'camp' | 'boss';
 export type View = 'village' | 'map' | 'combat' | 'reward';
-export type CombatPulseType = 'damage' | 'block' | 'heal' | 'poison' | 'draw' | 'enemyAttack' | 'enemyBlock' | 'enemyPoison' | 'victory';
+export type CombatPulseType =
+  | 'damage'
+  | 'block'
+  | 'heal'
+  | 'poison'
+  | 'draw'
+  | 'enemyAttack'
+  | 'enemyBlock'
+  | 'enemyPoison'
+  | 'victory';
 
 export type Resources = Record<ResourceId, number>;
 
@@ -22,6 +31,8 @@ export interface CardDefinition {
   type: CardType;
   description: string;
   effects: CardEffect[];
+  /** When true, played cards go to exhausted pile instead of discard. */
+  exhaust?: boolean;
   unlock?: {
     building: BuildingId;
     level: number;
@@ -87,6 +98,8 @@ export interface CombatState {
   playerPoison: number;
   energy: number;
   hand: string[];
+  /** Stable React keys per hand slot (same length as `hand`). */
+  handSlotIds: string[];
   drawPile: string[];
   discardPile: string[];
   exhausted: string[];

@@ -1,0 +1,66 @@
+import { buildingDisplayOrder, buildings } from './buildings';
+import { cards } from './cards';
+import { enemies } from './enemies';
+import { eventsById } from './events';
+import { createRunMap } from './map';
+import { buildStartingDeck, deckAddMutations, deckReplaceMutations, starterDeckBase, starterVillage } from './run';
+
+const assert = (condition: boolean, message: string): void => {
+  if (!condition) throw new Error(`[content/integrity] ${message}`);
+};
+
+/** Validates cross-references between content shards. Call in dev on startup. */
+export const assertContentIntegrity = (): void => {
+  for (const id of Object.keys(cards)) {
+    assert(cards[id].id === id, `cards key "${id}" must match card.id "${cards[id].id}"`);
+  }
+
+  for (const cardId of starterDeckBase) {
+    assert(Boolean(cards[cardId]), `starterDeckBase references unknown card "${cardId}"`);
+  }
+
+  for (const mut of deckReplaceMutations) {
+    assert(
+      Boolean(cards[mut.replace.fromCardId]),
+      `deckReplaceMutations unknown fromCardId "${mut.replace.fromCardId}"`,
+    );
+    assert(Boolean(cards[mut.replace.toCardId]), `deckReplaceMutations unknown toCardId "${mut.replace.toCardId}"`);
+  }
+
+  for (const mut of deckAddMutations) {
+    for (const id of mut.addCardIds) {
+      assert(Boolean(cards[id]), `deckAddMutations unknown card "${id}"`);
+    }
+  }
+
+  const sampleDeck = buildStartingDeck({ forge: 2, herbalHut: 2, watchtower: 2 });
+  for (const id of sampleDeck) {
+    assert(Boolean(cards[id]), `buildStartingDeck produced unknown card "${id}"`);
+  }
+
+  for (const bid of buildingDisplayOrder) {
+    assert(Boolean(buildings[bid]), `buildingDisplayOrder references unknown building "${bid}"`);
+  }
+
+  for (const eid of Object.keys(enemies)) {
+    assert(enemies[eid].id === eid, `enemies key "${eid}" must match enemy.id`);
+  }
+
+  const map0 = createRunMap(0);
+  for (const node of map0) {
+    if (node.enemyId) {
+      assert(Boolean(enemies[node.enemyId]), `map references unknown enemyId "${node.enemyId}" on node "${node.id}"`);
+    }
+    if (node.eventId) {
+      assert(
+        Boolean(eventsById[node.eventId]),
+        `map references unknown eventId "${node.eventId}" on node "${node.id}"`,
+      );
+    }
+  }
+
+  assert(
+    starterVillage.unlockedHeroes.includes('warden'),
+    'starterVillage.unlockedHeroes must include warden for current game',
+  );
+};

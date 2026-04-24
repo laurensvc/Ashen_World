@@ -1,4 +1,85 @@
-# Browser Game MVP Design Document
+# Ashen World — game operations & design
+
+This file is the **base of operations** for the project: it records product intent, the full MVP design reference, and—up front—where behavior lives in code. When you change how the game plays or reads, **update this document and the linked modules together** so design, data, and logic stay aligned.
+
+The playable web prototype is titled **Ashen World** in the UI. Older sections may still say “Ashen Village”; treat that as a working title unless you standardize copy everywhere.
+
+---
+
+## Operations hub
+
+### How to ship a behavior or content change
+
+1. **Decide** what changes (loop, balance, copy, new card/building/node, etc.) and note it in this file if it affects intent or player-facing promises.
+2. **Data & copy** — edit the right shard under [`src/content/`](src/content/) (see table below). Prefer config there over hardcoding strings in [`src/gameLogic.ts`](src/gameLogic.ts).
+3. **Rules** — if you need new state, actions, or resolution steps, extend [`src/types.ts`](src/types.ts) and [`src/gameLogic.ts`](src/gameLogic.ts).
+4. **Verify** — run `pnpm run build`. In development, [`src/main.tsx`](src/main.tsx) calls `assertContentIntegrity()` from [`src/content/integrity.ts`](src/content/integrity.ts) to catch bad card ids, map `enemyId` / `eventId` references, and deck mutations.
+
+### Implementation map (design doc ↔ code)
+
+| Concern | Where in this doc (starting §) | Primary code |
+|--------|---------------------------------|----------------|
+| Resources, labels, starter amounts | [§8 Resources](#8-resources), [§4 Loop](#4-core-game-loop) | [`src/content/resources.ts`](src/content/resources.ts), [`src/content/run.ts`](src/content/run.ts) (`starterVillage`) |
+| Buildings, upgrades, village UI copy | [§7 Village](#7-the-village-system) | [`src/content/buildings.ts`](src/content/buildings.ts) |
+| Cards, deck, exhaust, unlocks | [§11 Combat](#11-combat-system), [§12 Cards](#12-card-philosophy) | [`src/content/cards.ts`](src/content/cards.ts), [`src/content/run.ts`](src/content/run.ts) (starter deck, mutations, reward pools) |
+| Enemies, intents, combat rewards | [§14 Enemies](#14-enemy-design) | [`src/content/enemies.ts`](src/content/enemies.ts) |
+| Run map, nodes, reveal rules | [§10 Run structure](#10-run-structure) | [`src/content/map.ts`](src/content/map.ts), reveal helpers; reducer in [`src/gameLogic.ts`](src/gameLogic.ts) |
+| Events, camps, reward screens | [§10](#10-run-structure), [§9 Villagers](#9-villagers-and-rescued-survivors) | [`src/content/events.ts`](src/content/events.ts), [`src/content/narrative.ts`](src/content/narrative.ts) |
+| Combat tuning (hand size, energy, shuffles) | [§11](#11-combat-system) | [`src/content/run.ts`](src/content/run.ts) (`combatBalance`, `runBalance`) |
+| Save / load | [§24 Data model](#24-suggested-data-model) | `SAVE_KEY` and persistence in [`src/gameLogic.ts`](src/gameLogic.ts) |
+| UI layout & motion | [§22 UX](#22-ux-and-interface-plan) | [`src/App.tsx`](src/App.tsx), [`src/game/`](src/game/), [`src/styles.css`](src/styles.css) |
+
+### Current playable prototype (summary)
+
+These bullets describe what the **implemented** prototype does today; long sections below also describe **target** MVP and future systems.
+
+- **Views:** village (buildings + start run), run map (node picking), card combat, reward screens. State machine in [`src/gameLogic.ts`](src/gameLogic.ts); UI in [`src/game/views/`](src/game/views/).
+- **Hero:** single hero `warden`, run HP `52` (`runBalance` in [`src/content/run.ts`](src/content/run.ts)).
+- **Combat:** hand size `5`, energy per turn `3`, draw pile shuffle offsets from `combatBalance` in [`src/content/run.ts`](src/content/run.ts).
+- **Starter deck:** base list + forge replaces two `strike` with `ironStrike` at forge level ≥1; herbal hut level ≥1 appends `herbalPoultice` (exhaust card via `exhaust: true` on the card definition).
+- **Map:** fixed graph in [`src/content/map.ts`](src/content/map.ts); fog / reveal tiers depend on watchtower level; `eventId` drives event rewards via [`src/content/events.ts`](src/content/events.ts); camps use `campRewardsByNodeId` / default.
+- **Card rewards:** draft pool excludes `strike`/`guard` (plus broader exclusions for village-facing helpers); pick count `3`; pool rotation weights per building in `run.ts`.
+- **Integrity:** [`src/content/integrity.ts`](src/content/integrity.ts) cross-checks ids across cards, enemies, map, and mutations.
+- **Persistence:** browser `localStorage` key `ashen-world-save-v1` (see [`src/gameLogic.ts`](src/gameLogic.ts)); reset from the village header control clears that key.
+
+### Table of contents (full document)
+
+Design and product sections **§1–§32** follow the operations hub.
+
+- [§1 High-level concept](#1-high-level-concept)
+- [§2 Design pillars](#2-design-pillars)
+- [§3 MVP goals](#3-mvp-goals)
+- [§4 Core game loop](#4-core-game-loop)
+- [§5 Game structure at a glance](#5-game-structure-at-a-glance)
+- [§6 Core player verbs](#6-core-player-verbs)
+- [§7 The village system](#7-the-village-system)
+- [§8 Resources](#8-resources)
+- [§9 Villagers and rescued survivors](#9-villagers-and-rescued-survivors)
+- [§10 Run structure](#10-run-structure)
+- [§11 Combat system](#11-combat-system)
+- [§12 Card philosophy](#12-card-philosophy)
+- [§13 Hero archetypes](#13-hero-archetypes)
+- [§14 Enemy design](#14-enemy-design)
+- [§15 Avoiding fake progression](#15-avoiding-fake-progression)
+- [§16 Village-to-run connections](#16-village-to-run-connections)
+- [§17 Idle layer design](#17-idle-layer-design)
+- [§18 Progression structure](#18-progression-structure)
+- [§19 Suggested first content package](#19-suggested-first-content-package)
+- [§20 Example content](#20-example-content)
+- [§21 Example run flow](#21-example-run-flow)
+- [§22 UX and interface plan](#22-ux-and-interface-plan)
+- [§23 Technical MVP recommendation](#23-technical-mvp-recommendation)
+- [§24 Suggested data model](#24-suggested-data-model)
+- [§25 Balancing rules for the MVP](#25-balancing-rules-for-the-mvp)
+- [§26 Production roadmap](#26-production-roadmap)
+- [§27 First sprint breakdown](#27-first-sprint-breakdown)
+- [§28 Risks and traps](#28-risks-and-traps)
+- [§29 Future expansion ideas after MVP](#29-future-expansion-ideas-after-mvp)
+- [§30 Final MVP definition](#30-final-mvp-definition)
+- [§31 Immediate next actions](#31-immediate-next-actions)
+- [§32 Compact reference sheet](#32-compact-reference-sheet)
+
+---
 
 ## Working project names
 
