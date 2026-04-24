@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { HeartPulse, Shield } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { combatBalance } from '../../content/run';
 import { cards, enemies } from '../../gameData';
 import { CardButton } from '../CardButton';
 import {
@@ -17,11 +18,26 @@ import { MotionScreen } from '../MotionScreen';
 import { fastFade, staggerList } from '../uiConstants';
 import type { ViewProps } from '../viewProps';
 
+const heroDisplayName: Record<string, string> = {
+  warden: 'Warden',
+  ember: 'Ember',
+};
+
+const maxEnergySlots = (combat: { playerTurnCount: number }, run: { hero: string; relics: string[] }): number => {
+  if (combat.playerTurnCount > 0) return combatBalance.turnEnergy;
+  let bonus = 0;
+  if (run.hero === 'ember') bonus += 1;
+  if (run.relics.includes('ashCoin')) bonus += 1;
+  return combatBalance.turnEnergy + bonus;
+};
+
 const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
   const run = state.currentRun!;
   const combat = run.combat!;
   const enemy = enemies[combat.enemyId];
   const intent = enemy.intents[combat.enemyIntentIndex % enemy.intents.length];
+  const nextIntent = enemy.intents[(combat.enemyIntentIndex + 1) % enemy.intents.length];
+  const energySlots = maxEnergySlots(combat, run);
 
   const tiltBySlotRef = useRef(new Map<string, number>());
   useEffect(() => {
@@ -52,7 +68,7 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
           animate={getCombatPanelAnimation(playerPulse, 'player', reduceMotion)}
           transition={fastFade}
         >
-          <h2>Warden</h2>
+          <h2>{heroDisplayName[run.hero] ?? run.hero}</h2>
           <motion.div
             className='stat-line'
             animate={playerPulse === 'enemyAttack' && !reduceMotion ? playerHpStatPulse : undefined}
@@ -75,8 +91,8 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
             <Shield size={18} aria-hidden='true' />
             <span>{combat.playerBlock} block</span>
           </motion.div>
-          <div className='energy-meter'>
-            {Array.from({ length: 3 }).map((_, index) => (
+          <div className='energy-meter' aria-label={`Energy ${combat.energy} of ${energySlots}`}>
+            {Array.from({ length: energySlots }).map((_, index) => (
               <span key={index} className={index < combat.energy ? 'filled' : ''} />
             ))}
           </div>
@@ -118,6 +134,8 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
           <div className='intent-box'>
             <strong>Intent</strong>
             <span>{intent.label}</span>
+            <strong className='intent-next-label'>Next</strong>
+            <span className='intent-next'>{nextIntent.label}</span>
           </div>
         </motion.section>
 

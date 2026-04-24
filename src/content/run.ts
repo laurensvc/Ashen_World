@@ -10,25 +10,45 @@ export const combatBalance = {
 } as const;
 
 export const runBalance = {
-  heroId: 'warden' as HeroId,
-  maxHp: 52,
   fallbackEnemyId: 'ashStalker',
   rewardPickCount: 3,
 } as const;
 
-/** Base deck before building modifiers (card ids must exist in `cards`). */
-export const starterDeckBase: string[] = [
-  'strike',
-  'strike',
-  'strike',
-  'strike',
-  'guard',
-  'guard',
-  'guard',
-  'guard',
-  'quickStep',
-  'villageTool',
-];
+export const heroProfiles: Record<HeroId, { maxHp: number; starterDeck: readonly string[] }> = {
+  warden: {
+    maxHp: 52,
+    starterDeck: [
+      'strike',
+      'strike',
+      'strike',
+      'strike',
+      'guard',
+      'guard',
+      'guard',
+      'guard',
+      'quickStep',
+      'villageTool',
+    ],
+  },
+  ember: {
+    maxHp: 46,
+    starterDeck: [
+      'strike',
+      'strike',
+      'strike',
+      'guard',
+      'guard',
+      'guard',
+      'quickStep',
+      'emberSpark',
+      'cinderMark',
+      'brittleSlash',
+    ],
+  },
+};
+
+/** @deprecated Use `heroProfiles[hero].starterDeck` via `buildStartingDeck`. */
+export const starterDeckBase: string[] = [...heroProfiles.warden.starterDeck];
 
 export type DeckReplaceMutation = {
   when: { building: BuildingId; minLevel: number };
@@ -54,8 +74,8 @@ export const deckAddMutations: DeckAddMutation[] = [
   },
 ];
 
-export const buildStartingDeck = (buildingLevels: Record<BuildingId, number>): string[] => {
-  const deck = [...starterDeckBase];
+export const buildStartingDeck = (heroId: HeroId, buildingLevels: Record<BuildingId, number>): string[] => {
+  const deck = [...heroProfiles[heroId].starterDeck];
 
   for (const mut of deckReplaceMutations) {
     if (buildingLevels[mut.when.building] >= mut.when.minLevel) {
@@ -76,10 +96,18 @@ export const buildStartingDeck = (buildingLevels: Record<BuildingId, number>): s
 };
 
 /** Excluded from village “available reward cards” picker (UI / info). */
-export const rewardPoolExcludeForVillage: string[] = ['strike', 'guard', 'quickStep', 'villageTool'];
+export const rewardPoolExcludeForVillage: string[] = [
+  'strike',
+  'guard',
+  'quickStep',
+  'villageTool',
+  'emberSpark',
+  'cinderMark',
+  'brittleSlash',
+];
 
 /** Excluded from combat reward draft pool rotation. */
-export const rewardPoolExcludeForDraft: string[] = ['strike', 'guard'];
+export const rewardPoolExcludeForDraft: string[] = ['strike', 'guard', 'emberSpark', 'cinderMark', 'brittleSlash'];
 
 /** Weight offset for rotating the reward card pool (building levels). */
 export const rewardPoolRotationWeights: Record<BuildingId, number> = {
@@ -110,6 +138,9 @@ export const starterVillage = {
   villagers: [] as string[],
   unlockedHeroes: ['warden'] as HeroId[],
 };
+
+export const unlockHeroIfNew = (heroes: HeroId[], hero: HeroId): HeroId[] =>
+  heroes.includes(hero) ? heroes : [...heroes, hero];
 
 export const createStarterState = (): GameState => ({
   view: 'village',

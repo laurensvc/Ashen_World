@@ -5,17 +5,30 @@ import {
   buildStartingDeck,
   combatBalance,
   computeRewardPoolRotationOffset,
+  heroProfiles,
   rewardPoolExcludeForDraft,
   rewardPoolExcludeForVillage,
   runBalance,
+  unlockHeroIfNew,
 } from './content/run';
-import { buildings, cards, createRunMap, createStarterState, enemies, emptyResources } from './gameData';
+import {
+  buildings,
+  cards,
+  createRunMap,
+  createStarterState,
+  enemies,
+  emptyResources,
+  relicDisplayOrder,
+  relics,
+} from './gameData';
 import type {
   BuildingId,
   CardEffect,
   CombatPulseType,
   CombatState,
+  EnemyIntent,
   GameState,
+  HeroId,
   MapNode,
   ResourceId,
   Resources,
@@ -51,15 +64,27 @@ const normalizeCombatHandSlots = (state: GameState): GameState => {
 
 export type GameAction =
   | { type: 'upgradeBuilding'; buildingId: BuildingId }
-  | { type: 'startRun' }
+  | { type: 'startRun'; heroId?: HeroId }
   | { type: 'selectNode'; nodeId: string }
   | { type: 'playCard'; handIndex: number }
   | { type: 'endTurn' }
   | { type: 'chooseCardReward'; cardId: string }
   | { type: 'skipCardReward' }
+  | { type: 'chooseRelicReward'; relicId: string }
+  | { type: 'skipRelicReward' }
   | { type: 'continueFromReward' }
   | { type: 'returnToVillage' }
   | { type: 'reset' };
+
+const combatFieldDefaults = (): Pick<
+  CombatState,
+  'enemyChargeStacks' | 'enemyExposedBonus' | 'nextDamageIgnoresBlock' | 'playerTurnCount'
+> => ({
+  enemyChargeStacks: 0,
+  enemyExposedBonus: 0,
+  nextDamageIgnoresBlock: false,
+  playerTurnCount: 0,
+});
 
 export const loadGame = (): GameState => {
   try {
@@ -68,6 +93,19 @@ export const loadGame = (): GameState => {
     const parsed = JSON.parse(raw) as GameState;
     if (!parsed.village || !parsed.view) return createStarterState();
     const merged = { ...parsed, ui: parsed.ui ?? { sequence: 0 } } as GameState;
+    if (merged.currentRun) {
+      let run = merged.currentRun;
+      if (run.runSeed == null) {
+        run = { ...run, runSeed: (merged.savedAt ?? Date.now()) >>> 0 };
+      }
+      if (!run.hero) {
+        run = { ...run, hero: 'warden' };
+      }
+      if (run.combat) {
+        run = { ...run, combat: { ...combatFieldDefaults(), ...run.combat } };
+      }
+      merged.currentRun = run;
+    }
     return normalizeCombatHandSlots(merged);
   } catch {
     return createStarterState();
@@ -95,7 +133,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     case 'upgradeBuilding':
       return upgradeBuilding(state, action.buildingId);
     case 'startRun':
-      return startRun(state);
+      return startRun(state, action.heroId);
     case 'selectNode':
       return selectNode(state, action.nodeId);
     case 'playCard':
@@ -106,6 +144,10 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       return chooseCardReward(state, action.cardId);
     case 'skipCardReward':
       return chooseCardReward(state);
+    case 'chooseRelicReward':
+      return chooseRelicReward(state, action.relicId);
+    case 'skipRelicReward':
+      return skipRelicReward(state);
     case 'continueFromReward':
       return continueFromReward(state);
     case 'returnToVillage':
@@ -153,6 +195,11 @@ const upgradeBuilding = (state: GameState, buildingId: BuildingId): GameState =>
   const cost = definition.upgradeCosts[nextLevel] ?? {};
   if (!canAfford(state.village.resources, cost)) return state;
 
+  let unlockedHeroes = state.village.unlockedHeroes;
+  if (buildingId === 'forge' && nextLevel === 2) {
+    unlockedHeroes = unlockHeroIfNew(unlockedHeroes, 'ember');
+  }
+
   return withUi(
     {
       ...state,
@@ -163,6 +210,7 @@ const upgradeBuilding = (state: GameState, buildingId: BuildingId): GameState =>
           ...state.village.buildingLevels,
           [buildingId]: nextLevel,
         },
+        unlockedHeroes,
       },
     },
     {
@@ -173,17 +221,22 @@ const upgradeBuilding = (state: GameState, buildingId: BuildingId): GameState =>
   );
 };
 
-const startRun = (state: GameState): GameState => {
+const startRun = (state: GameState, heroId?: HeroId): GameState => {
   const buildingLevels = state.village.buildingLevels;
-  const deck = buildStartingDeck(buildingLevels);
+  const hero: HeroId =
+    heroId && state.village.unlockedHeroes.includes(heroId) ? heroId : (state.village.unlockedHeroes[0] ?? 'warden');
+  const profile = heroProfiles[hero];
+  const deck = buildStartingDeck(hero, buildingLevels);
+  const runSeed = (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
 
   const run: RunState = {
-    hero: runBalance.heroId,
-    maxHp: runBalance.maxHp,
-    hp: runBalance.maxHp,
+    hero,
+    maxHp: profile.maxHp,
+    hp: profile.maxHp,
     deck,
     relics: [],
-    map: createRunMap(buildingLevels.watchtower),
+    runSeed,
+    map: createRunMap(buildingLevels.watchtower, runSeed),
     currentNodeId: 'start',
     completedNodeIds: ['start'],
     pendingRewards: emptyResources(),
@@ -220,7 +273,7 @@ const selectNode = (state: GameState, nodeId: string): GameState => {
         view: 'combat',
         currentRun: {
           ...updatedRun,
-          combat: createCombat(node.enemyId ?? runBalance.fallbackEnemyId, updatedRun.deck),
+          combat: createCombat(updatedRun, node.enemyId ?? runBalance.fallbackEnemyId),
         },
       },
       { lastAction: 'selectNode', selectedNodeId: nodeId },
@@ -268,8 +321,15 @@ const selectNode = (state: GameState, nodeId: string): GameState => {
   );
 };
 
-const createCombat = (enemyId: string, deck: string[]): CombatState => {
-  const drawPile = rotate(deck, combatBalance.combatDrawRotate);
+const firstTurnEnergyBonus = (run: RunState): number => {
+  let bonus = 0;
+  if (run.hero === 'ember') bonus += 1;
+  if (run.relics.includes('ashCoin')) bonus += 1;
+  return bonus;
+};
+
+const createCombat = (run: RunState, enemyId: string): CombatState => {
+  const drawPile = rotate(run.deck, combatBalance.combatDrawRotate);
   const initial = drawCards([], [], drawPile, [], combatBalance.handSize);
   return {
     enemyId,
@@ -277,9 +337,13 @@ const createCombat = (enemyId: string, deck: string[]): CombatState => {
     enemyBlock: 0,
     enemyPoison: 0,
     enemyIntentIndex: 0,
+    enemyChargeStacks: 0,
+    enemyExposedBonus: 0,
+    nextDamageIgnoresBlock: false,
+    playerTurnCount: 0,
     playerBlock: 0,
     playerPoison: 0,
-    energy: combatBalance.turnEnergy,
+    energy: combatBalance.turnEnergy + firstTurnEnergyBonus(run),
     hand: initial.hand,
     handSlotIds: initial.handSlotIds,
     drawPile: initial.drawPile,
@@ -350,15 +414,33 @@ const applyCardEffect = (
 ): { run: RunState; combat: CombatState } => {
   switch (effect.type) {
     case 'damage': {
-      const remainingBlock = Math.max(0, combat.enemyBlock - effect.amount);
-      const damage = Math.max(0, effect.amount - combat.enemyBlock);
+      const bonus = combat.enemyExposedBonus;
+      const total = effect.amount + bonus;
+      const usesStoredBrittle = combat.nextDamageIgnoresBlock;
+      const ignoresBlock = usesStoredBrittle || Boolean(effect.pierce);
+      let newBlock = combat.enemyBlock;
+      let damageToHp = total;
+      if (!ignoresBlock) {
+        damageToHp = Math.max(0, total - combat.enemyBlock);
+        newBlock = Math.max(0, combat.enemyBlock - total);
+      }
+      let nextRun = run;
+      if (effect.siphonIfPoisoned && combat.enemyPoison > 0) {
+        nextRun = {
+          ...run,
+          hp: Math.min(run.maxHp, run.hp + effect.siphonIfPoisoned),
+        };
+      }
+      const brittleLine = bonus > 0 ? ` (${effect.amount}+${bonus} exposed)` : usesStoredBrittle ? ' (brittle)' : '';
       return {
-        run,
+        run: nextRun,
         combat: {
           ...combat,
-          enemyBlock: remainingBlock,
-          enemyHp: Math.max(0, combat.enemyHp - damage),
-          log: [`Dealt ${damage} damage.`, ...combat.log].slice(0, 6),
+          enemyBlock: newBlock,
+          enemyHp: Math.max(0, combat.enemyHp - damageToHp),
+          enemyExposedBonus: 0,
+          nextDamageIgnoresBlock: usesStoredBrittle ? false : combat.nextDamageIgnoresBlock,
+          log: [`Dealt ${damageToHp} damage${brittleLine}.`, ...combat.log].slice(0, 6),
         },
       };
     }
@@ -379,13 +461,34 @@ const applyCardEffect = (
           log: [`Healed ${effect.amount} HP.`, ...combat.log].slice(0, 6),
         },
       };
-    case 'poison':
+    case 'poison': {
+      const extra = run.relics.includes('brambleCharm') ? 1 : 0;
+      const amt = effect.amount + extra;
       return {
         run,
         combat: {
           ...combat,
-          enemyPoison: combat.enemyPoison + effect.amount,
-          log: [`Applied ${effect.amount} poison.`, ...combat.log].slice(0, 6),
+          enemyPoison: combat.enemyPoison + amt,
+          log: [`Applied ${amt} poison${extra ? ' (charm)' : ''}.`, ...combat.log].slice(0, 6),
+        },
+      };
+    }
+    case 'applyExposed':
+      return {
+        run,
+        combat: {
+          ...combat,
+          enemyExposedBonus: combat.enemyExposedBonus + effect.amount,
+          log: [`Exposed (+${effect.amount} next damage).`, ...combat.log].slice(0, 6),
+        },
+      };
+    case 'markBrittle':
+      return {
+        run,
+        combat: {
+          ...combat,
+          nextDamageIgnoresBlock: true,
+          log: ['Brittle primed.', ...combat.log].slice(0, 6),
         },
       };
     case 'draw': {
@@ -402,8 +505,6 @@ const applyCardEffect = (
         },
       };
     }
-    default:
-      return { run, combat };
   }
 };
 
@@ -412,11 +513,18 @@ const endTurn = (state: GameState): GameState => {
   const combat = run?.combat;
   if (!run || !combat) return state;
 
-  const enemy = enemies[combat.enemyId];
-  const intent = enemy.intents[combat.enemyIntentIndex % enemy.intents.length];
-  let enemyHp = combat.enemyHp;
-  let enemyBlock = combat.enemyBlock;
-  let enemyPoison = combat.enemyPoison;
+  const combatAfterPlayerTurn: CombatState = {
+    ...combat,
+    enemyExposedBonus: 0,
+    nextDamageIgnoresBlock: false,
+  };
+
+  const enemy = enemies[combatAfterPlayerTurn.enemyId];
+  const intent = enemy.intents[combatAfterPlayerTurn.enemyIntentIndex % enemy.intents.length];
+  let enemyHp = combatAfterPlayerTurn.enemyHp;
+  let enemyBlock = combatAfterPlayerTurn.enemyBlock;
+  let enemyPoison = combatAfterPlayerTurn.enemyPoison;
+  let enemyChargeStacks = combatAfterPlayerTurn.enemyChargeStacks;
   const log: string[] = [];
 
   if (enemyPoison > 0) {
@@ -427,7 +535,12 @@ const endTurn = (state: GameState): GameState => {
 
   if (enemyHp <= 0) {
     return withUi(
-      finishCombat(state, run, { ...combat, enemyHp, enemyPoison, log: [...log, ...combat.log].slice(0, 6) }),
+      finishCombat(state, run, {
+        ...combatAfterPlayerTurn,
+        enemyHp,
+        enemyPoison,
+        log: [...log, ...combatAfterPlayerTurn.log].slice(0, 6),
+      }),
       {
         lastAction: 'victory',
         combatPulse: { type: 'victory', target: 'enemy' },
@@ -436,12 +549,23 @@ const endTurn = (state: GameState): GameState => {
   }
 
   let hp = run.hp;
-  let playerBlock = combat.playerBlock;
-  let playerPoison = combat.playerPoison;
+  let playerBlock = combatAfterPlayerTurn.playerBlock;
+  let playerPoison = combatAfterPlayerTurn.playerPoison;
 
-  if (intent.damage) {
-    const damage = Math.max(0, intent.damage - playerBlock);
-    playerBlock = Math.max(0, playerBlock - intent.damage);
+  if (intent.telegraphCharge != null && intent.telegraphCharge > 0) {
+    enemyChargeStacks += intent.telegraphCharge;
+    log.push(`${enemy.name} gathers power (+${intent.telegraphCharge}).`);
+  }
+
+  let damageAmt = intent.damage ?? 0;
+  if (intent.damageUsesCharge) {
+    damageAmt += enemyChargeStacks;
+    enemyChargeStacks = 0;
+  }
+
+  if (damageAmt > 0) {
+    const damage = Math.max(0, damageAmt - playerBlock);
+    playerBlock = Math.max(0, playerBlock - damageAmt);
     hp = Math.max(0, hp - damage);
     log.push(`${enemy.name} deals ${damage} damage.`);
   }
@@ -476,6 +600,7 @@ const endTurn = (state: GameState): GameState => {
             title: narrative.runDefeat.title,
             message: narrative.runDefeat.message,
             cardOptions: [],
+            relicOptions: undefined,
             resources: run.pendingRewards,
             nextView: 'village',
           },
@@ -488,10 +613,16 @@ const endTurn = (state: GameState): GameState => {
   const drawn = drawCards(
     [],
     [],
-    [...combat.drawPile],
-    [...combat.discardPile, ...combat.hand],
+    [...combatAfterPlayerTurn.drawPile],
+    [...combatAfterPlayerTurn.discardPile, ...combatAfterPlayerTurn.hand],
     combatBalance.handSize,
   );
+
+  let nextPlayerBlock = playerBlock;
+  if (run.relics.includes('wardenBand')) {
+    nextPlayerBlock += 1;
+    log.push('Warden Band grants 1 block.');
+  }
 
   return withUi(
     {
@@ -500,27 +631,43 @@ const endTurn = (state: GameState): GameState => {
         ...run,
         hp,
         combat: {
-          ...combat,
+          ...combatAfterPlayerTurn,
           enemyHp,
           enemyBlock,
           enemyPoison,
-          playerBlock,
+          enemyChargeStacks,
+          playerBlock: nextPlayerBlock,
           playerPoison,
           energy: combatBalance.turnEnergy,
           hand: drawn.hand,
           handSlotIds: drawn.handSlotIds,
           drawPile: drawn.drawPile,
           discardPile: drawn.discardPile,
-          enemyIntentIndex: combat.enemyIntentIndex + 1,
-          log: [...log, 'New turn.', ...combat.log].slice(0, 6),
+          enemyIntentIndex: combatAfterPlayerTurn.enemyIntentIndex + 1,
+          playerTurnCount: combatAfterPlayerTurn.playerTurnCount + 1,
+          log: [...log, 'New turn.', ...combatAfterPlayerTurn.log].slice(0, 6),
         },
       },
     },
     {
       lastAction: 'endTurn',
-      combatPulse: { type: getIntentPulse(intent), target: intent.damage ? 'player' : 'enemy' },
+      combatPulse: {
+        type: getIntentPulse(intent),
+        target:
+          intent.telegraphCharge != null && intent.telegraphCharge > 0
+            ? 'enemy'
+            : damageAmt > 0 || intent.poison
+              ? 'player'
+              : 'enemy',
+      },
     },
   );
+};
+
+const pickRelicOptions = (run: RunState): string[] => {
+  const available = relicDisplayOrder.filter((id) => !run.relics.includes(id));
+  if (available.length === 0) return [];
+  return rotate([...available], run.runSeed % 97).slice(0, Math.min(3, available.length));
 };
 
 const finishCombat = (state: GameState, run: RunState, combat: CombatState): GameState => {
@@ -528,6 +675,7 @@ const finishCombat = (state: GameState, run: RunState, combat: CombatState): Gam
   const node = findNode(run, run.currentNodeId);
   const rewardResources = enemy.rewards;
   const cardOptions = node?.type === 'boss' ? [] : pickCardRewards(state.village.buildingLevels);
+  const relicOptions = node?.type === 'elite' ? pickRelicOptions(run) : undefined;
 
   return {
     ...state,
@@ -542,6 +690,7 @@ const finishCombat = (state: GameState, run: RunState, combat: CombatState): Gam
         title: `${enemy.name} defeated`,
         message: node?.type === 'boss' ? narrative.combatVictory.bossMessage : narrative.combatVictory.defaultMessage,
         cardOptions,
+        relicOptions,
         resources: rewardResources,
         nextView: node?.type === 'boss' ? 'village' : 'map',
       },
@@ -569,6 +718,45 @@ const chooseCardReward = (state: GameState, cardId?: string): GameState => {
       chosenCardId: cardId,
       combatPulse: { type: 'draw', cardId, target: 'reward' },
     },
+  );
+};
+
+const chooseRelicReward = (state: GameState, relicId: string): GameState => {
+  const run = state.currentRun;
+  const reward = run?.reward;
+  if (!run || !reward?.relicOptions?.includes(relicId) || !relics[relicId]) return state;
+  return withUi(
+    {
+      ...state,
+      currentRun: {
+        ...run,
+        relics: [...run.relics, relicId],
+        reward: {
+          ...reward,
+          relicOptions: [],
+        },
+      },
+    },
+    { lastAction: 'chooseRelic', chosenRelicId: relicId, combatPulse: { type: 'victory', target: 'reward' } },
+  );
+};
+
+const skipRelicReward = (state: GameState): GameState => {
+  const run = state.currentRun;
+  const reward = run?.reward;
+  if (!run || !reward?.relicOptions?.length) return state;
+  return withUi(
+    {
+      ...state,
+      currentRun: {
+        ...run,
+        reward: {
+          ...reward,
+          relicOptions: [],
+        },
+      },
+    },
+    { lastAction: 'skipRelic' },
   );
 };
 
@@ -632,13 +820,17 @@ const returnToVillage = (state: GameState): GameState => {
 const getCardPulse = (effects: CardEffect[]): CombatPulseType => {
   if (effects.some((effect) => effect.type === 'damage')) return 'damage';
   if (effects.some((effect) => effect.type === 'poison')) return 'poison';
+  if (effects.some((effect) => effect.type === 'markBrittle')) return 'block';
+  if (effects.some((effect) => effect.type === 'applyExposed')) return 'draw';
   if (effects.some((effect) => effect.type === 'block')) return 'block';
   if (effects.some((effect) => effect.type === 'heal')) return 'heal';
   return 'draw';
 };
 
-const getIntentPulse = (intent: { damage?: number; block?: number; poison?: number }): CombatPulseType => {
-  if (intent.damage) return 'enemyAttack';
+const getIntentPulse = (intent: EnemyIntent): CombatPulseType => {
+  if (intent.telegraphCharge != null && intent.telegraphCharge > 0) return 'telegraph';
+  const dmg = intent.damage ?? 0;
+  if (dmg > 0 || intent.damageUsesCharge) return 'enemyAttack';
   if (intent.poison) return 'enemyPoison';
   return 'enemyBlock';
 };

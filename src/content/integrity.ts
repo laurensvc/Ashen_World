@@ -3,7 +3,15 @@ import { cards } from './cards';
 import { enemies } from './enemies';
 import { eventsById } from './events';
 import { createRunMap } from './map';
-import { buildStartingDeck, deckAddMutations, deckReplaceMutations, starterDeckBase, starterVillage } from './run';
+import { relicDisplayOrder, relics } from './relics';
+import {
+  buildStartingDeck,
+  deckAddMutations,
+  deckReplaceMutations,
+  heroProfiles,
+  starterDeckBase,
+  starterVillage,
+} from './run';
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) throw new Error(`[content/integrity] ${message}`);
@@ -33,9 +41,11 @@ export const assertContentIntegrity = (): void => {
     }
   }
 
-  const sampleDeck = buildStartingDeck({ forge: 2, herbalHut: 2, watchtower: 2 });
-  for (const id of sampleDeck) {
-    assert(Boolean(cards[id]), `buildStartingDeck produced unknown card "${id}"`);
+  for (const heroId of Object.keys(heroProfiles) as (keyof typeof heroProfiles)[]) {
+    const sampleDeck = buildStartingDeck(heroId, { forge: 2, herbalHut: 2, watchtower: 2 });
+    for (const id of sampleDeck) {
+      assert(Boolean(cards[id]), `buildStartingDeck(${heroId}) produced unknown card "${id}"`);
+    }
   }
 
   for (const bid of buildingDisplayOrder) {
@@ -46,16 +56,26 @@ export const assertContentIntegrity = (): void => {
     assert(enemies[eid].id === eid, `enemies key "${eid}" must match enemy.id`);
   }
 
-  const map0 = createRunMap(0);
-  for (const node of map0) {
-    if (node.enemyId) {
-      assert(Boolean(enemies[node.enemyId]), `map references unknown enemyId "${node.enemyId}" on node "${node.id}"`);
-    }
-    if (node.eventId) {
-      assert(
-        Boolean(eventsById[node.eventId]),
-        `map references unknown eventId "${node.eventId}" on node "${node.id}"`,
-      );
+  for (const rid of relicDisplayOrder) {
+    assert(Boolean(relics[rid]), `relicDisplayOrder references unknown relic "${rid}"`);
+    assert(relics[rid].id === rid, `relics key "${rid}" must match relic.id`);
+  }
+
+  for (const mapParams of [
+    [0, 0],
+    [2, 42_069],
+  ] as const) {
+    const map0 = createRunMap(mapParams[0], mapParams[1]);
+    for (const node of map0) {
+      if (node.enemyId) {
+        assert(Boolean(enemies[node.enemyId]), `map references unknown enemyId "${node.enemyId}" on node "${node.id}"`);
+      }
+      if (node.eventId) {
+        assert(
+          Boolean(eventsById[node.eventId]),
+          `map references unknown eventId "${node.eventId}" on node "${node.id}"`,
+        );
+      }
     }
   }
 

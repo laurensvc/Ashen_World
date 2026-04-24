@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import { cards } from '../../gameData';
+import { cards, relics } from '../../gameData';
 import { CardButton } from '../CardButton';
 import { CostLine } from '../CostLine';
 import { MotionScreen } from '../MotionScreen';
@@ -59,6 +59,38 @@ const RewardView = ({ state, dispatch, reduceMotion }: ViewProps) => {
             ) : null}
           </section>
 
+          {reward.relicOptions?.length ? (
+            <section>
+              <h2>Choose a relic</h2>
+              <div className='reward-relics'>
+                {reward.relicOptions.map((relicId) => {
+                  const relic = relics[relicId];
+                  if (!relic) return null;
+                  return (
+                    <motion.button
+                      key={relicId}
+                      type='button'
+                      className={`relic-pick${state.ui.chosenRelicId === relicId ? ' relic-pick--selected' : ''}`}
+                      whileTap={reduceMotion ? undefined : { scale: 0.97 }}
+                      onClick={() => dispatch({ type: 'chooseRelicReward', relicId })}
+                    >
+                      <span className='relic-pick__name'>{relic.name}</span>
+                      <span className='relic-pick__desc'>{relic.description}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+              <motion.button
+                className='text-action'
+                type='button'
+                whileTap={reduceMotion ? undefined : { scale: 0.94 }}
+                onClick={() => dispatch({ type: 'skipRelicReward' })}
+              >
+                Skip relic
+              </motion.button>
+            </section>
+          ) : null}
+
           {reward.cardOptions.length ? (
             <section>
               <h2>Choose a card</h2>
@@ -83,12 +115,12 @@ const RewardView = ({ state, dispatch, reduceMotion }: ViewProps) => {
                 Skip card reward
               </motion.button>
             </section>
-          ) : (
+          ) : !reward.relicOptions?.length ? (
             <section>
               <h2>Run deck</h2>
               <p>{run.deck.length} cards carried.</p>
             </section>
-          )}
+          ) : null}
         </div>
 
         <motion.button

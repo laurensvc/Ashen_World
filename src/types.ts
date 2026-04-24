@@ -1,6 +1,15 @@
 export type ResourceId = 'wood' | 'iron' | 'herbs' | 'food' | 'relicShards' | 'blueprintScraps';
 export type BuildingId = 'forge' | 'herbalHut' | 'watchtower';
-export type HeroId = 'warden';
+export type HeroId = 'warden' | 'ember';
+
+export type RelicPassiveId = 'firstTurnEnergy' | 'longPoison' | 'turnStartBlock';
+
+export interface RelicDefinition {
+  id: string;
+  name: string;
+  description: string;
+  passive: RelicPassiveId;
+}
 export type CardType = 'attack' | 'defense' | 'utility' | 'status';
 export type NodeType = 'start' | 'combat' | 'elite' | 'event' | 'camp' | 'boss';
 export type View = 'village' | 'map' | 'combat' | 'reward';
@@ -13,16 +22,21 @@ export type CombatPulseType =
   | 'enemyAttack'
   | 'enemyBlock'
   | 'enemyPoison'
+  | 'telegraph'
   | 'victory';
 
 export type Resources = Record<ResourceId, number>;
 
 export type CardEffect =
-  | { type: 'damage'; amount: number }
+  | { type: 'damage'; amount: number; siphonIfPoisoned?: number; pierce?: boolean }
   | { type: 'block'; amount: number }
   | { type: 'heal'; amount: number }
   | { type: 'poison'; amount: number }
-  | { type: 'draw'; amount: number };
+  | { type: 'draw'; amount: number }
+  /** Next player damage this combat turn deals +amount (consumed on one damage instance). */
+  | { type: 'applyExposed'; amount: number }
+  /** Next player damage ignores enemy block once, then consumed. */
+  | { type: 'markBrittle' };
 
 export interface CardDefinition {
   id: string;
@@ -44,6 +58,10 @@ export interface EnemyIntent {
   damage?: number;
   block?: number;
   poison?: number;
+  /** Adds to telegraph charge; no direct damage this step. */
+  telegraphCharge?: number;
+  /** Add flat damage from accumulated telegraph charge, then clear charge. */
+  damageUsesCharge?: boolean;
 }
 
 export interface EnemyDefinition {
@@ -94,6 +112,14 @@ export interface CombatState {
   enemyBlock: number;
   enemyPoison: number;
   enemyIntentIndex: number;
+  /** Damage stacked by telegraph intents; consumed when an intent uses damageUsesCharge. */
+  enemyChargeStacks: number;
+  /** Bonus damage on the next player damage effect this turn. */
+  enemyExposedBonus: number;
+  /** When true, the next player damage ignores enemy block entirely for that hit. */
+  nextDamageIgnoresBlock: boolean;
+  /** Increments after each enemy turn; 0 = opening player turn. */
+  playerTurnCount: number;
   playerBlock: number;
   playerPoison: number;
   energy: number;
@@ -111,6 +137,8 @@ export interface RewardState {
   title: string;
   message: string;
   cardOptions: string[];
+  /** Elite relic draft; pick one or skip. */
+  relicOptions?: string[];
   resources: Partial<Resources>;
   villager?: string;
   nextView: View;
@@ -122,6 +150,8 @@ export interface RunState {
   hp: number;
   deck: string[];
   relics: string[];
+  /** Seeded map/enemy variety for this run. */
+  runSeed: number;
   map: MapNode[];
   currentNodeId: string;
   completedNodeIds: string[];
@@ -142,6 +172,7 @@ export interface GameState {
     changedResources?: ResourceId[];
     selectedNodeId?: string;
     chosenCardId?: string;
+    chosenRelicId?: string;
     combatPulse?: {
       type: CombatPulseType;
       cardId?: string;

@@ -1,15 +1,44 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, Castle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { heroProfiles } from '../../content/run';
+import type { HeroId } from '../../types';
 import { MotionScreen } from '../MotionScreen';
 import { buildingOrder, fastFade, riseItem, staggerList } from '../uiConstants';
 import type { ViewProps } from '../viewProps';
 import { BuildingCard } from './BuildingCard';
 
+const heroLabel: Record<HeroId, string> = {
+  warden: 'Warden',
+  ember: 'Ember',
+};
+
 const VillageView = ({ state, dispatch, reduceMotion }: ViewProps) => {
+  const unlocked = state.village.unlockedHeroes;
+  const [selectedHero, setSelectedHero] = useState<HeroId>(() => unlocked[0] ?? 'warden');
+
+  useEffect(() => {
+    if (!unlocked.includes(selectedHero)) {
+      setSelectedHero(unlocked[0] ?? 'warden');
+    }
+  }, [unlocked, selectedHero]);
+
+  const heroToRun = unlocked.includes(selectedHero) ? selectedHero : (unlocked[0] ?? 'warden');
+  const profile = heroProfiles[heroToRun];
+
   const villagers = state.village.villagers.length ? state.village.villagers.join(', ') : 'No rescued villagers yet';
   const forgeLevel = state.village.buildingLevels.forge;
   const herbalLevel = state.village.buildingLevels.herbalHut;
   const watchtowerLevel = state.village.buildingLevels.watchtower;
+
+  const deckBlurb =
+    heroToRun === 'ember'
+      ? forgeLevel >= 1
+        ? 'Ember kit + forge-tempered strikes'
+        : 'Ember spark, marks, and brittle slash'
+      : forgeLevel >= 1
+        ? 'Tempered weapon kit'
+        : 'Basic strike and guard kit';
 
   return (
     <MotionScreen className='screen village-screen' reduceMotion={reduceMotion}>
@@ -23,7 +52,7 @@ const VillageView = ({ state, dispatch, reduceMotion }: ViewProps) => {
           type='button'
           whileHover={reduceMotion ? undefined : { scale: 1.03 }}
           whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-          onClick={() => dispatch({ type: 'startRun' })}
+          onClick={() => dispatch({ type: 'startRun', heroId: heroToRun })}
         >
           Start run
           <ArrowRight size={18} aria-hidden='true' />
@@ -38,15 +67,36 @@ const VillageView = ({ state, dispatch, reduceMotion }: ViewProps) => {
       >
         <motion.section className='panel village-summary' variants={riseItem} transition={fastFade}>
           <Castle size={28} aria-hidden='true' />
-          <h2>Warden Prep</h2>
+          <h2>Run prep</h2>
+          <div className='hero-pick' role='group' aria-label='Choose hero'>
+            {(['warden', 'ember'] as const).map((id) => {
+              const on = unlocked.includes(id);
+              return (
+                <button
+                  key={id}
+                  type='button'
+                  className={`hero-pick__btn${heroToRun === id ? ' hero-pick__btn--active' : ''}`}
+                  disabled={!on}
+                  onClick={() => on && setSelectedHero(id)}
+                >
+                  {heroLabel[id]}
+                  {!on && id === 'ember' ? ' (Forge II)' : null}
+                </button>
+              );
+            })}
+          </div>
           <dl>
             <div>
               <dt>Hero</dt>
-              <dd>Warden</dd>
+              <dd>{heroLabel[heroToRun]}</dd>
+            </div>
+            <div>
+              <dt>HP</dt>
+              <dd>{profile.maxHp}</dd>
             </div>
             <div>
               <dt>Starting deck</dt>
-              <dd>{forgeLevel >= 1 ? 'Tempered weapon kit' : 'Basic strike and guard kit'}</dd>
+              <dd>{deckBlurb}</dd>
             </div>
             <div>
               <dt>Field aid</dt>
