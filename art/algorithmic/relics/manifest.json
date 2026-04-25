@@ -1,0 +1,7 @@
+{
+  "target": "relics",
+  "baseSeed": 33097,
+  "size": { "width": 256, "height": 256 },
+  "ids": ["ashCoin", "brambleCharm", "wardenBand"],
+  "outputPattern": "relic-{id}.png"
+}

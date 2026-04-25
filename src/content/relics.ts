@@ -12,12 +12,14 @@ export const relics: Record<string, RelicDefinition> = {
     name: 'Bramble Charm',
     description: 'Whenever you apply poison to an enemy, apply +1 more.',
     passive: 'longPoison',
+    metaUnlockEmbers: 8,
   },
   wardenBand: {
     id: 'wardenBand',
     name: 'Warden Band',
     description: 'Gain 1 block at the start of every turn.',
     passive: 'turnStartBlock',
+    metaUnlockEmbers: 14,
   },
 };
 

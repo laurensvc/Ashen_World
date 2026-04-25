@@ -9,8 +9,11 @@ export interface RelicDefinition {
   name: string;
   description: string;
   passive: RelicPassiveId;
+  metaUnlockEmbers?: number;
 }
 export type CardType = 'attack' | 'defense' | 'utility' | 'status';
+export type PuzzleCardRole = 'counter' | 'setup' | 'finisher' | 'stabilizer';
+export type PuzzleObjectiveType = 'counterBlock' | 'counterPierce' | 'counterPoison' | 'sequenceSetupFinisher';
 export type NodeType = 'start' | 'combat' | 'elite' | 'event' | 'camp' | 'boss';
 export type View = 'village' | 'map' | 'combat' | 'reward';
 export type CombatPulseType =
@@ -45,12 +48,14 @@ export interface CardDefinition {
   type: CardType;
   description: string;
   effects: CardEffect[];
+  puzzleRoles?: PuzzleCardRole[];
   /** When true, played cards go to exhausted pile instead of discard. */
   exhaust?: boolean;
   unlock?: {
     building: BuildingId;
     level: number;
   };
+  metaUnlockEmbers?: number;
 }
 
 export interface EnemyIntent {
@@ -62,6 +67,7 @@ export interface EnemyIntent {
   telegraphCharge?: number;
   /** Add flat damage from accumulated telegraph charge, then clear charge. */
   damageUsesCharge?: boolean;
+  puzzleObjective?: PuzzleObjectiveType;
 }
 
 export interface EnemyDefinition {
@@ -69,8 +75,30 @@ export interface EnemyDefinition {
   name: string;
   maxHp: number;
   role: string;
+  puzzleHint?: string;
   intents: EnemyIntent[];
   rewards: Partial<Resources>;
+}
+
+export interface CombatPuzzleObjective {
+  type: PuzzleObjectiveType;
+  hint: string;
+  success: boolean;
+  failed: boolean;
+  progress: {
+    blockGainedThisTurn?: number;
+    usedPierceThisTurn?: boolean;
+    appliedPoisonThisTurn?: boolean;
+    playedSetupThisTurn?: boolean;
+    playedFinisherAfterSetupThisTurn?: boolean;
+  };
+  missPenalty?: {
+    hpLoss?: number;
+    enemyBlockGain?: number;
+    enemyChargeGain?: number;
+    playerPoisonGain?: number;
+  };
+  lastResolution?: 'success' | 'failed';
 }
 
 export interface BuildingLevelEffect {
@@ -129,6 +157,7 @@ export interface CombatState {
   drawPile: string[];
   discardPile: string[];
   exhausted: string[];
+  puzzleObjective?: CombatPuzzleObjective;
   log: string[];
 }
 
@@ -157,13 +186,24 @@ export interface RunState {
   completedNodeIds: string[];
   pendingRewards: Partial<Resources>;
   pendingVillagers: string[];
+  recentCardPicks: string[];
+  bonusCardDraftCount: number;
+  campBonusHeal: number;
   combat?: CombatState;
   reward?: RewardState;
+}
+
+export interface MetaState {
+  embers: number;
+  totalRuns: number;
+  runsWon: number;
+  highestEmbersEarnedInRun: number;
 }
 
 export interface GameState {
   view: View;
   village: VillageState;
+  meta: MetaState;
   currentRun?: RunState;
   ui: {
     sequence: number;

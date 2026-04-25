@@ -1,18 +1,30 @@
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import { cards, relics } from '../../gameData';
+import { cards, getEventArtUrl, getRelicArtUrl, getUiBackgroundUrl, relics } from '../../gameData';
+import type { CSSProperties } from 'react';
 import { CardButton } from '../CardButton';
 import { CostLine } from '../CostLine';
 import { MotionScreen } from '../MotionScreen';
+import { RunDeckInspector } from '../RunDeckInspector';
 import { fastFade, springyImpact } from '../uiConstants';
 import type { ViewProps } from '../viewProps';
 
 const RewardView = ({ state, dispatch, reduceMotion }: ViewProps) => {
   const run = state.currentRun!;
   const reward = run.reward!;
+  const sourceNode = run.map.find((node) => node.id === reward.sourceNodeId);
+  const eventArt = getEventArtUrl(sourceNode?.eventId);
 
   return (
-    <MotionScreen className='screen reward-screen' reduceMotion={reduceMotion}>
+    <MotionScreen
+      className='screen reward-screen'
+      reduceMotion={reduceMotion}
+      style={
+        getUiBackgroundUrl('reward')
+          ? ({ '--screen-bg': `url("${getUiBackgroundUrl('reward')}")` } as CSSProperties)
+          : undefined
+      }
+    >
       <motion.div
         className='reward-panel'
         initial={reduceMotion ? false : { opacity: 0, y: 38, scale: 0.94 }}
@@ -42,6 +54,7 @@ const RewardView = ({ state, dispatch, reduceMotion }: ViewProps) => {
         >
           {reward.message}
         </motion.p>
+        {eventArt ? <img className='reward-event-art' src={eventArt} alt='' aria-hidden='true' /> : null}
 
         <div className='reward-columns'>
           <section>
@@ -74,6 +87,9 @@ const RewardView = ({ state, dispatch, reduceMotion }: ViewProps) => {
                       whileTap={reduceMotion ? undefined : { scale: 0.97 }}
                       onClick={() => dispatch({ type: 'chooseRelicReward', relicId })}
                     >
+                      {getRelicArtUrl(relicId) ? (
+                        <img className='relic-pick__icon' src={getRelicArtUrl(relicId)} alt='' aria-hidden='true' />
+                      ) : null}
                       <span className='relic-pick__name'>{relic.name}</span>
                       <span className='relic-pick__desc'>{relic.description}</span>
                     </motion.button>
@@ -122,6 +138,7 @@ const RewardView = ({ state, dispatch, reduceMotion }: ViewProps) => {
             </section>
           ) : null}
         </div>
+        <RunDeckInspector deck={run.deck} recentCardPicks={run.recentCardPicks} compact title='Deck before next node' />
 
         <motion.button
           className='primary-action'

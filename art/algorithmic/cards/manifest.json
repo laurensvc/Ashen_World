@@ -1,0 +1,110 @@
+{
+  "target": "cards",
+  "baseSeed": 11031,
+  "size": { "width": 512, "height": 320 },
+  "outputPattern": "card-{id}.png",
+  "cards": [
+    {
+      "id": "strike",
+      "generator": "strikeSlash",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-strike.png"
+    },
+    {
+      "id": "guard",
+      "generator": "guardBulwark",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-guard.png"
+    },
+    {
+      "id": "quickStep",
+      "generator": "quickStepFlux",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-quickStep.png"
+    },
+    {
+      "id": "villageTool",
+      "generator": "villageToolForge",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-villageTool.png"
+    },
+    {
+      "id": "ironStrike",
+      "generator": "ironStrikeEdge",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-ironStrike.png"
+    },
+    {
+      "id": "temperShield",
+      "generator": "temperShieldPlate",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-temperShield.png"
+    },
+    {
+      "id": "cleavingHook",
+      "generator": "cleavingHookArc",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-cleavingHook.png"
+    },
+    {
+      "id": "herbalPoultice",
+      "generator": "herbalPoulticeBloom",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-herbalPoultice.png"
+    },
+    {
+      "id": "rotknife",
+      "generator": "rotknifeToxin",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-rotknife.png"
+    },
+    {
+      "id": "bitterCloud",
+      "generator": "bitterCloudFume",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-bitterCloud.png"
+    },
+    {
+      "id": "brace",
+      "generator": "braceAnchor",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-brace.png"
+    },
+    {
+      "id": "markedBlow",
+      "generator": "markedBlowSigil",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-markedBlow.png"
+    },
+    {
+      "id": "cinderMark",
+      "generator": "cinderMarkBrand",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-cinderMark.png"
+    },
+    {
+      "id": "brittleSlash",
+      "generator": "brittleSlashFracture",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-brittleSlash.png"
+    },
+    {
+      "id": "venomStrike",
+      "generator": "venomStrikeSpiral",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-venomStrike.png"
+    },
+    {
+      "id": "ashTap",
+      "generator": "ashTapConduit",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-ashTap.png"
+    },
+    {
+      "id": "emberSpark",
+      "generator": "emberSparkPulse",
+      "seedSource": "hash(card:id:baseSeed:generator)",
+      "output": "card-emberSpark.png"
+    }
+  ]
+}

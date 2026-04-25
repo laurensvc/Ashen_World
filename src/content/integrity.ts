@@ -1,5 +1,6 @@
 import { buildingDisplayOrder, buildings } from './buildings';
 import { cards } from './cards';
+import { generatedAssetManifest } from './artAssets';
 import { enemies } from './enemies';
 import { eventsById } from './events';
 import { createRunMap } from './map';
@@ -59,6 +60,24 @@ export const assertContentIntegrity = (): void => {
   for (const rid of relicDisplayOrder) {
     assert(Boolean(relics[rid]), `relicDisplayOrder references unknown relic "${rid}"`);
     assert(relics[rid].id === rid, `relics key "${rid}" must match relic.id`);
+  }
+
+  for (const cid of Object.keys(cards)) {
+    assert(Boolean(generatedAssetManifest.cards[cid]), `missing generated card art for "${cid}"`);
+  }
+  const cardAssetValues = Object.values(generatedAssetManifest.cards);
+  assert(
+    new Set(cardAssetValues).size === cardAssetValues.length,
+    'generated card art must be one-to-one (no duplicated file mapping)',
+  );
+  for (const eid of Object.keys(eventsById)) {
+    assert(Boolean(generatedAssetManifest.events[eid]), `missing generated event art for "${eid}"`);
+  }
+  for (const rid of relicDisplayOrder) {
+    assert(Boolean(generatedAssetManifest.relics[rid]), `missing generated relic art for "${rid}"`);
+  }
+  for (const view of ['village', 'map', 'combat', 'reward'] as const) {
+    assert(Boolean(generatedAssetManifest.ui[view]), `missing generated UI background for "${view}"`);
   }
 
   for (const mapParams of [

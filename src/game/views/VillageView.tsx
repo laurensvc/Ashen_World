@@ -1,9 +1,14 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, Castle } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { heroProfiles } from '../../content/run';
+import { getMetaTierLabel } from '../../content/metaProgression';
+import { getUiBackgroundUrl } from '../../gameData';
+import { buildStartingDeck } from '../../content/run';
 import type { HeroId } from '../../types';
 import { MotionScreen } from '../MotionScreen';
+import { RunDeckInspector } from '../RunDeckInspector';
 import { buildingOrder, fastFade, riseItem, staggerList } from '../uiConstants';
 import type { ViewProps } from '../viewProps';
 import { BuildingCard } from './BuildingCard';
@@ -31,17 +36,18 @@ const VillageView = ({ state, dispatch, reduceMotion }: ViewProps) => {
   const herbalLevel = state.village.buildingLevels.herbalHut;
   const watchtowerLevel = state.village.buildingLevels.watchtower;
 
-  const deckBlurb =
-    heroToRun === 'ember'
-      ? forgeLevel >= 1
-        ? 'Ember kit + forge-tempered strikes'
-        : 'Ember spark, marks, and brittle slash'
-      : forgeLevel >= 1
-        ? 'Tempered weapon kit'
-        : 'Basic strike and guard kit';
+  const previewDeck = buildStartingDeck(heroToRun, state.village.buildingLevels, state.meta);
 
   return (
-    <MotionScreen className='screen village-screen' reduceMotion={reduceMotion}>
+    <MotionScreen
+      className='screen village-screen'
+      reduceMotion={reduceMotion}
+      style={
+        getUiBackgroundUrl('village')
+          ? ({ '--screen-bg': `url("${getUiBackgroundUrl('village')}")` } as CSSProperties)
+          : undefined
+      }
+    >
       <div className='screen-heading'>
         <div>
           <span className='eyebrow'>Village</span>
@@ -96,7 +102,7 @@ const VillageView = ({ state, dispatch, reduceMotion }: ViewProps) => {
             </div>
             <div>
               <dt>Starting deck</dt>
-              <dd>{deckBlurb}</dd>
+              <dd>{previewDeck.length} cards ready</dd>
             </div>
             <div>
               <dt>Field aid</dt>
@@ -113,6 +119,9 @@ const VillageView = ({ state, dispatch, reduceMotion }: ViewProps) => {
               </dd>
             </div>
           </dl>
+          <div className='quiet-note'>
+            Meta rank: {getMetaTierLabel(state.meta.embers)} · {state.meta.embers} embers
+          </div>
         </motion.section>
 
         <section className='building-list' aria-label='Buildings'>
@@ -130,11 +139,16 @@ const VillageView = ({ state, dispatch, reduceMotion }: ViewProps) => {
         <motion.section className='panel roster-panel' variants={riseItem} transition={fastFade}>
           <h2>Rescued Villagers</h2>
           <p>{villagers}</p>
+          <p>
+            Runs: {state.meta.totalRuns} · Wins: {state.meta.runsWon} · Best ember haul:{' '}
+            {state.meta.highestEmbersEarnedInRun}
+          </p>
           <div className='quiet-note'>
             Scouts and other survivors are content unlocks, not passive multipliers. Rescue one during a run to bring
             the map layer online.
           </div>
         </motion.section>
+        <RunDeckInspector deck={previewDeck} title='Starting deck preview' compact />
       </motion.div>
     </MotionScreen>
   );

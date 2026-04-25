@@ -1,4 +1,6 @@
-import type { BuildingId, GameState, HeroId } from '../types';
+import type { BuildingId, GameState, HeroId, MetaState } from '../types';
+import { canUseMetaLockedCard } from './metaProgression';
+import { cards } from './cards';
 /** Combat / deck tuning. */
 export const combatBalance = {
   handSize: 5,
@@ -13,6 +15,12 @@ export const runBalance = {
   fallbackEnemyId: 'ashStalker',
   rewardPickCount: 3,
 } as const;
+
+export const computeBonusCardDraftCount = (buildingLevels: Record<BuildingId, number>): number =>
+  buildingLevels.forge >= 2 ? 1 : 0;
+
+export const computeCampBonusHeal = (buildingLevels: Record<BuildingId, number>): number =>
+  buildingLevels.herbalHut >= 2 ? 4 : buildingLevels.herbalHut >= 1 ? 2 : 0;
 
 export const heroProfiles: Record<HeroId, { maxHp: number; starterDeck: readonly string[] }> = {
   warden: {
@@ -74,7 +82,11 @@ export const deckAddMutations: DeckAddMutation[] = [
   },
 ];
 
-export const buildStartingDeck = (heroId: HeroId, buildingLevels: Record<BuildingId, number>): string[] => {
+export const buildStartingDeck = (
+  heroId: HeroId,
+  buildingLevels: Record<BuildingId, number>,
+  meta?: MetaState,
+): string[] => {
   const deck = [...heroProfiles[heroId].starterDeck];
 
   for (const mut of deckReplaceMutations) {
@@ -89,6 +101,16 @@ export const buildStartingDeck = (heroId: HeroId, buildingLevels: Record<Buildin
   for (const mut of deckAddMutations) {
     if (buildingLevels[mut.when.building] >= mut.when.minLevel) {
       deck.push(...mut.addCardIds);
+    }
+  }
+
+  if (buildingLevels.forge >= 2) {
+    const forgeCardPool = ['temperShield', 'cleavingHook'].filter((id) => {
+      const card = cards[id];
+      return card && (!meta || canUseMetaLockedCard(card, meta));
+    });
+    if (forgeCardPool.length) {
+      deck.push(forgeCardPool[buildingLevels.watchtower % forgeCardPool.length]);
     }
   }
 
@@ -149,6 +171,12 @@ export const createStarterState = (): GameState => ({
     buildingLevels: { ...starterVillage.buildingLevels },
     villagers: [...starterVillage.villagers],
     unlockedHeroes: [...starterVillage.unlockedHeroes],
+  },
+  meta: {
+    embers: 0,
+    totalRuns: 0,
+    runsWon: 0,
+    highestEmbersEarnedInRun: 0,
   },
   ui: {
     sequence: 0,

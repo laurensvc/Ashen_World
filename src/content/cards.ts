@@ -8,6 +8,7 @@ export const cards: Record<string, CardDefinition> = {
     type: 'attack',
     description: 'Deal 5 damage.',
     effects: [{ type: 'damage', amount: 5 }],
+    puzzleRoles: ['finisher'],
   },
   guard: {
     id: 'guard',
@@ -16,6 +17,7 @@ export const cards: Record<string, CardDefinition> = {
     type: 'defense',
     description: 'Gain 5 block.',
     effects: [{ type: 'block', amount: 5 }],
+    puzzleRoles: ['counter', 'stabilizer'],
   },
   quickStep: {
     id: 'quickStep',
@@ -24,6 +26,7 @@ export const cards: Record<string, CardDefinition> = {
     type: 'utility',
     description: 'Draw 1 card.',
     effects: [{ type: 'draw', amount: 1 }],
+    puzzleRoles: ['setup'],
   },
   villageTool: {
     id: 'villageTool',
@@ -35,6 +38,7 @@ export const cards: Record<string, CardDefinition> = {
       { type: 'block', amount: 3 },
       { type: 'damage', amount: 3 },
     ],
+    puzzleRoles: ['counter', 'finisher'],
   },
   ironStrike: {
     id: 'ironStrike',
@@ -44,6 +48,7 @@ export const cards: Record<string, CardDefinition> = {
     description: 'Deal 7 damage.',
     effects: [{ type: 'damage', amount: 7 }],
     unlock: { building: 'forge', level: 1 },
+    puzzleRoles: ['finisher'],
   },
   temperShield: {
     id: 'temperShield',
@@ -53,6 +58,7 @@ export const cards: Record<string, CardDefinition> = {
     description: 'Gain 7 block.',
     effects: [{ type: 'block', amount: 7 }],
     unlock: { building: 'forge', level: 2 },
+    puzzleRoles: ['counter', 'stabilizer'],
   },
   cleavingHook: {
     id: 'cleavingHook',
@@ -62,6 +68,7 @@ export const cards: Record<string, CardDefinition> = {
     description: 'Deal 11 damage.',
     effects: [{ type: 'damage', amount: 11 }],
     unlock: { building: 'forge', level: 2 },
+    puzzleRoles: ['finisher'],
   },
   herbalPoultice: {
     id: 'herbalPoultice',
@@ -72,6 +79,7 @@ export const cards: Record<string, CardDefinition> = {
     effects: [{ type: 'heal', amount: 5 }],
     exhaust: true,
     unlock: { building: 'herbalHut', level: 1 },
+    puzzleRoles: ['stabilizer'],
   },
   rotknife: {
     id: 'rotknife',
@@ -84,6 +92,7 @@ export const cards: Record<string, CardDefinition> = {
       { type: 'poison', amount: 3 },
     ],
     unlock: { building: 'herbalHut', level: 2 },
+    puzzleRoles: ['counter', 'setup'],
   },
   bitterCloud: {
     id: 'bitterCloud',
@@ -93,6 +102,7 @@ export const cards: Record<string, CardDefinition> = {
     description: 'Apply 6 poison.',
     effects: [{ type: 'poison', amount: 6 }],
     unlock: { building: 'herbalHut', level: 2 },
+    puzzleRoles: ['counter'],
   },
   brace: {
     id: 'brace',
@@ -104,6 +114,7 @@ export const cards: Record<string, CardDefinition> = {
       { type: 'block', amount: 3 },
       { type: 'draw', amount: 1 },
     ],
+    puzzleRoles: ['counter', 'setup'],
   },
   markedBlow: {
     id: 'markedBlow',
@@ -115,6 +126,8 @@ export const cards: Record<string, CardDefinition> = {
       { type: 'damage', amount: 4 },
       { type: 'draw', amount: 1 },
     ],
+    metaUnlockEmbers: 4,
+    puzzleRoles: ['setup', 'finisher'],
   },
   cinderMark: {
     id: 'cinderMark',
@@ -123,6 +136,7 @@ export const cards: Record<string, CardDefinition> = {
     type: 'status',
     description: 'Expose: next damage this turn deals +5.',
     effects: [{ type: 'applyExposed', amount: 5 }],
+    puzzleRoles: ['setup'],
   },
   brittleSlash: {
     id: 'brittleSlash',
@@ -131,6 +145,7 @@ export const cards: Record<string, CardDefinition> = {
     type: 'attack',
     description: 'Brittle: next damage ignores block. Deal 5.',
     effects: [{ type: 'markBrittle' }, { type: 'damage', amount: 5 }],
+    puzzleRoles: ['counter', 'finisher'],
   },
   venomStrike: {
     id: 'venomStrike',
@@ -140,6 +155,8 @@ export const cards: Record<string, CardDefinition> = {
     description: 'Deal 4 damage. If the enemy is poisoned, heal 2.',
     effects: [{ type: 'damage', amount: 4, siphonIfPoisoned: 2 }],
     unlock: { building: 'herbalHut', level: 1 },
+    metaUnlockEmbers: 10,
+    puzzleRoles: ['counter', 'stabilizer'],
   },
   ashTap: {
     id: 'ashTap',
@@ -152,6 +169,8 @@ export const cards: Record<string, CardDefinition> = {
       { type: 'draw', amount: 1 },
     ],
     unlock: { building: 'watchtower', level: 1 },
+    metaUnlockEmbers: 18,
+    puzzleRoles: ['setup'],
   },
   emberSpark: {
     id: 'emberSpark',
@@ -164,5 +183,6 @@ export const cards: Record<string, CardDefinition> = {
       { type: 'poison', amount: 1 },
       { type: 'applyExposed', amount: 2 },
     ],
+    puzzleRoles: ['counter', 'setup', 'finisher'],
   },
 };

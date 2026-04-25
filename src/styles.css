@@ -243,8 +243,23 @@ button {
 }
 
 .screen {
+  position: relative;
   max-width: 1400px;
   margin: 0 auto;
+}
+
+.screen::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: '';
+  border-radius: 12px;
+  opacity: 0.38;
+  background-image: var(--screen-bg);
+  background-size: cover;
+  background-position: center;
+  mix-blend-mode: screen;
 }
 
 .screen-heading {
@@ -394,6 +409,14 @@ button {
   background: rgba(43, 35, 28, 0.88);
   color: #f3e2c5;
   cursor: pointer;
+}
+
+.relic-pick__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  border: 1px solid rgba(224, 192, 137, 0.24);
+  object-fit: cover;
 }
 
 .relic-pick--selected {
@@ -821,6 +844,16 @@ dd {
   width: min(980px, 100%);
   padding: clamp(22px, 4vw, 42px);
   border-radius: 8px;
+}
+
+.reward-event-art {
+  width: 100%;
+  max-height: 220px;
+  margin: 14px 0 10px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(224, 192, 137, 0.2);
+  opacity: 0.9;
 }
 
 .villager-chip {

@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion';
 import { Map } from 'lucide-react';
-import { resourceLabels } from '../../gameData';
+import { getUiBackgroundUrl, resourceLabels } from '../../gameData';
+import type { CSSProperties } from 'react';
 import type { GameState } from '../../types';
 import { MotionScreen } from '../MotionScreen';
+import { RunDeckInspector } from '../RunDeckInspector';
 import { fastFade, resourceOrder, staggerList } from '../uiConstants';
 import type { ViewProps } from '../viewProps';
 import { MapNodeButton } from './MapNodeButton';
@@ -27,7 +29,15 @@ const RunMapView = ({ state, dispatch, reduceMotion }: ViewProps) => {
   const currentNode = run.map.find((node) => node.id === run.currentNodeId)!;
 
   return (
-    <MotionScreen className='screen' reduceMotion={reduceMotion}>
+    <MotionScreen
+      className='screen'
+      reduceMotion={reduceMotion}
+      style={
+        getUiBackgroundUrl('map')
+          ? ({ '--screen-bg': `url("${getUiBackgroundUrl('map')}")` } as CSSProperties)
+          : undefined
+      }
+    >
       <div className='screen-heading compact'>
         <div>
           <span className='eyebrow'>Run Map</span>
@@ -58,6 +68,9 @@ const RunMapView = ({ state, dispatch, reduceMotion }: ViewProps) => {
               : 'Choose a connected revealed node.'}
           </p>
           <PendingRunRewards state={state} />
+          <p className='quiet-note'>
+            Village boons: +{run.bonusCardDraftCount} card choice rewards · +{run.campBonusHeal} camp healing
+          </p>
         </motion.section>
 
         <motion.section
@@ -79,6 +92,7 @@ const RunMapView = ({ state, dispatch, reduceMotion }: ViewProps) => {
           ))}
         </motion.section>
       </div>
+      <RunDeckInspector deck={run.deck} recentCardPicks={run.recentCardPicks} compact title='Current run deck' />
     </MotionScreen>
   );
 };

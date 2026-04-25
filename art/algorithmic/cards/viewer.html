@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ashen World Cards Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Lora:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --anthropic-dark: #141413;
+        --anthropic-light: #faf9f5;
+        --anthropic-mid-gray: #b0aea5;
+        --anthropic-light-gray: #e8e6dc;
+        --anthropic-orange: #d97757;
+        --anthropic-blue: #6a9bcc;
+        --anthropic-green: #788c5d;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(135deg, var(--anthropic-light) 0%, #f5f3ee 100%);
+        min-height: 100vh;
+        color: var(--anthropic-dark);
+      }
+      .container {
+        display: flex;
+        min-height: 100vh;
+        padding: 20px;
+        gap: 20px;
+      }
+      .sidebar {
+        width: 320px;
+        flex-shrink: 0;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 24px;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(20, 20, 19, 0.1);
+        overflow-y: auto;
+      }
+      .sidebar h1 {
+        font-family: 'Lora', serif;
+        font-size: 24px;
+        font-weight: 500;
+        margin-bottom: 8px;
+      }
+      .subtitle {
+        color: var(--anthropic-mid-gray);
+        font-size: 14px;
+        margin-bottom: 24px;
+      }
+      .control-section {
+        margin-bottom: 24px;
+      }
+      .control-section h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 12px;
+      }
+      .control-section h3::before {
+        content: '• ';
+        color: var(--anthropic-orange);
+      }
+      .seed-input {
+        width: 100%;
+        background: var(--anthropic-light);
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid var(--anthropic-light-gray);
+        text-align: center;
+        margin-bottom: 8px;
+      }
+      .seed-controls,
+      .button-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .slider-container {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .slider-container input[type='range'] {
+        flex: 1;
+      }
+      .value-display {
+        min-width: 52px;
+        text-align: right;
+        color: var(--anthropic-mid-gray);
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+      }
+      .button {
+        background: var(--anthropic-orange);
+        color: #fff;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      .button.secondary {
+        background: var(--anthropic-blue);
+      }
+      .button.tertiary {
+        background: var(--anthropic-green);
+      }
+      .canvas-area {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #canvas-container {
+        width: 100%;
+        max-width: 1000px;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(20, 20, 19, 0.1);
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="sidebar">
+        <h1>Ember Sigils</h1>
+        <div class="subtitle">High-contrast algorithmic card backdrops with deterministic seeds.</div>
+        <div class="control-section">
+          <h3>Seed</h3>
+          <input type="number" id="seed-input" class="seed-input" value="11031" onchange="updateSeed()" />
+          <div class="seed-controls">
+            <button class="button secondary" onclick="previousSeed()">← Prev</button
+            ><button class="button secondary" onclick="nextSeed()">Next →</button>
+          </div>
+          <button class="button tertiary" onclick="randomSeedAndUpdate()">↻ Random</button>
+          <div class="slider-container" style="margin-top: 8px">
+            <input id="jump-input" class="seed-input" type="number" value="11031" /><button
+              class="button"
+              onclick="jumpToSeed()"
+            >
+              Go
+            </button>
+          </div>
+        </div>
+        <div class="control-section">
+          <h3>Parameters</h3>
+          <div class="control-group">
+            <label>Card ID</label>
+            <select id="cardId" class="seed-input" onchange="updateCardId(this.value)">
+              <option value="strike">strike</option>
+              <option value="guard">guard</option>
+              <option value="quickStep">quickStep</option>
+              <option value="villageTool">villageTool</option>
+              <option value="ironStrike">ironStrike</option>
+              <option value="temperShield">temperShield</option>
+              <option value="cleavingHook">cleavingHook</option>
+              <option value="herbalPoultice">herbalPoultice</option>
+              <option value="rotknife">rotknife</option>
+              <option value="bitterCloud">bitterCloud</option>
+              <option value="brace">brace</option>
+              <option value="markedBlow">markedBlow</option>
+              <option value="cinderMark">cinderMark</option>
+              <option value="brittleSlash">brittleSlash</option>
+              <option value="venomStrike">venomStrike</option>
+              <option value="ashTap">ashTap</option>
+              <option value="emberSpark">emberSpark</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Field Frequency</label>
+            <div class="slider-container">
+              <input
+                type="range"
+                id="frequency"
+                min="2"
+                max="16"
+                step="1"
+                value="8"
+                oninput="updateParam('frequency', this.value)"
+              /><span class="value-display" id="frequency-value">8</span>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Swirl</label>
+            <div class="slider-container">
+              <input
+                type="range"
+                id="swirl"
+                min="0.5"
+                max="8"
+                step="0.1"
+                value="3.1"
+                oninput="updateParam('swirl', this.value)"
+              /><span class="value-display" id="swirl-value">3.1</span>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Contrast</label>
+            <div class="slider-container">
+              <input
+                type="range"
+                id="contrast"
+                min="0.6"
+                max="2.4"
+                step="0.1"
+                value="1.4"
+                oninput="updateParam('contrast', this.value)"
+              /><span class="value-display" id="contrast-value">1.4</span>
+            </div>
+          </div>
+        </div>
+        <div class="control-section">
+          <h3>Actions</h3>
+          <div class="button-row">
+            <button class="button secondary" onclick="regenerate()">Regenerate</button
+            ><button class="button" onclick="resetParameters()">Reset</button>
+          </div>
+          <button class="button tertiary" onclick="downloadPng()">Download PNG</button>
+        </div>
+      </div>
+      <div class="canvas-area"><div id="canvas-container"></div></div>
+    </div>
+    <script>
+      const cardProfiles = {
+        strike: {
+          mode: 'shards',
+          motif: 1,
+          palette: [
+            [8, 10, 18],
+            [223, 56, 43],
+            [252, 158, 79],
+            [252, 232, 170],
+          ],
+        },
+        guard: {
+          mode: 'rings',
+          motif: 2,
+          palette: [
+            [8, 12, 20],
+            [61, 92, 134],
+            [145, 191, 240],
+            [237, 247, 255],
+          ],
+        },
+        quickStep: {
+          mode: 'grid',
+          motif: 5,
+          palette: [
+            [7, 9, 18],
+            [101, 67, 186],
+            [102, 178, 244],
+            [229, 249, 255],
+          ],
+        },
+        villageTool: {
+          mode: 'swirl',
+          motif: 3,
+          palette: [
+            [19, 13, 8],
+            [146, 83, 41],
+            [229, 163, 84],
+            [249, 229, 171],
+          ],
+        },
+        ironStrike: {
+          mode: 'shards',
+          motif: 1,
+          palette: [
+            [10, 10, 15],
+            [94, 101, 117],
+            [207, 216, 225],
+            [247, 214, 132],
+          ],
+        },
+        temperShield: {
+          mode: 'rings',
+          motif: 2,
+          palette: [
+            [8, 11, 17],
+            [41, 81, 130],
+            [137, 186, 224],
+            [232, 245, 252],
+          ],
+        },
+        cleavingHook: {
+          mode: 'shards',
+          motif: 4,
+          palette: [
+            [12, 8, 8],
+            [147, 42, 29],
+            [239, 102, 59],
+            [253, 200, 116],
+          ],
+        },
+        herbalPoultice: {
+          mode: 'swirl',
+          motif: 3,
+          palette: [
+            [8, 12, 10],
+            [43, 120, 70],
+            [112, 194, 129],
+            [236, 251, 215],
+          ],
+        },
+        rotknife: {
+          mode: 'grid',
+          motif: 1,
+          palette: [
+            [10, 9, 12],
+            [95, 35, 63],
+            [180, 80, 118],
+            [239, 180, 211],
+          ],
+        },
+        bitterCloud: {
+          mode: 'swirl',
+          motif: 5,
+          palette: [
+            [8, 11, 10],
+            [48, 79, 64],
+            [92, 149, 116],
+            [214, 236, 201],
+          ],
+        },
+        brace: {
+          mode: 'rings',
+          motif: 2,
+          palette: [
+            [7, 11, 18],
+            [44, 96, 122],
+            [122, 180, 201],
+            [241, 252, 253],
+          ],
+        },
+        markedBlow: {
+          mode: 'grid',
+          motif: 4,
+          palette: [
+            [11, 9, 16],
+            [166, 47, 87],
+            [237, 109, 120],
+            [253, 216, 164],
+          ],
+        },
+        cinderMark: {
+          mode: 'shards',
+          motif: 3,
+          palette: [
+            [10, 8, 8],
+            [136, 40, 28],
+            [236, 93, 54],
+            [255, 196, 116],
+          ],
+        },
+        brittleSlash: {
+          mode: 'shards',
+          motif: 1,
+          palette: [
+            [6, 8, 13],
+            [95, 104, 133],
+            [178, 196, 227],
+            [241, 249, 255],
+          ],
+        },
+        venomStrike: {
+          mode: 'swirl',
+          motif: 4,
+          palette: [
+            [6, 10, 11],
+            [34, 108, 82],
+            [79, 181, 136],
+            [218, 248, 214],
+          ],
+        },
+        ashTap: {
+          mode: 'grid',
+          motif: 5,
+          palette: [
+            [8, 10, 18],
+            [78, 84, 180],
+            [114, 157, 247],
+            [221, 239, 255],
+          ],
+        },
+        emberSpark: {
+          mode: 'rings',
+          motif: 4,
+          palette: [
+            [10, 8, 11],
+            [146, 45, 86],
+            [239, 89, 74],
+            [253, 192, 118],
+          ],
+        },
+      };
+      let params = { seed: 11031, frequency: 8, swirl: 3.1, contrast: 1.4, cardId: 'strike' };
+      const defaults = { ...params };
+      let gfx;
+      function setup() {
+        const c = createCanvas(1200, 750);
+        c.parent('canvas-container');
+        noLoop();
+        pixelDensity(1);
+        regenerate();
+      }
+      function regenerate() {
+        randomSeed(params.seed);
+        noiseSeed(params.seed);
+        draw();
+      }
+      const paletteAt = (p, t) => {
+        const s = constrain(t, 0, 1) * (p.length - 1);
+        const i0 = floor(s),
+          i1 = min(p.length - 1, i0 + 1),
+          f = s - i0;
+        return [
+          round(lerp(p[i0][0], p[i1][0], f)),
+          round(lerp(p[i0][1], p[i1][1], f)),
+          round(lerp(p[i0][2], p[i1][2], f)),
+        ];
+      };
+      function draw() {
+        background(10, 10, 16);
+        const profile = cardProfiles[params.cardId] ?? cardProfiles.strike;
+        loadPixels();
+        const cx = width * (0.25 + random() * 0.5),
+          cy = height * (0.2 + random() * 0.6);
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const nx = (x - cx) / width,
+              ny = (y - cy) / height,
+              r = Math.hypot(nx, ny),
+              a = Math.atan2(ny, nx);
+            let wave = 0;
+            if (profile.mode === 'swirl') {
+              wave =
+                Math.sin((a + r * params.swirl) * params.frequency) * 0.45 +
+                Math.cos((nx - ny) * 11.0 + params.seed * 0.0002) * 0.33 +
+                Math.sin((nx + ny) * 19.0 - params.seed * 0.0001) * 0.22;
+            } else if (profile.mode === 'rings') {
+              wave =
+                Math.sin(r * 48 * params.swirl - a * params.frequency) * 0.55 +
+                Math.cos((nx * nx - ny * ny) * 28 + params.seed * 0.00007) * 0.25 +
+                Math.sin(a * (params.frequency + 2)) * 0.2;
+            } else if (profile.mode === 'shards') {
+              const d1 = abs(nx * 2.1 + ny * 1.3),
+                d2 = abs(nx * 0.9 - ny * 2.2);
+              wave =
+                Math.cos(d1 * 44 + params.seed * 0.00009) * 0.42 +
+                Math.sin(d2 * 37 - params.seed * 0.00006) * 0.38 +
+                Math.cos((a + r * params.swirl) * 5) * 0.2;
+            } else {
+              wave =
+                Math.sin(nx * 42 * params.swirl) * 0.35 +
+                Math.cos(ny * 38 * params.swirl) * 0.35 +
+                Math.sin((nx + ny) * 27 + a * 4) * 0.3;
+            }
+            if (profile.motif === 1) wave += exp(-pow(nx * 3.2, 2)) * 0.42;
+            else if (profile.motif === 2) wave += exp(-pow(ny * 3.2, 2)) * 0.42;
+            else if (profile.motif === 3) wave += (1 - constrain(abs(nx) + abs(ny), 0, 1)) * 0.5;
+            else if (profile.motif === 4) wave += sin(a * 6) * 0.25 + cos(r * 30) * 0.2;
+            else if (profile.motif === 5) wave += cos((nx * 2 + ny * 2) * 18) * 0.28;
+            const v = constrain((0.5 + wave - r * 1.35) * params.contrast, 0, 1);
+            const g = constrain(1 - r * 2.5, 0, 1);
+            const t = constrain(v * 0.8 + g * 0.2, 0, 1);
+            const c = paletteAt(profile.palette, t);
+            const i = (y * width + x) * 4;
+            pixels[i] = c[0];
+            pixels[i + 1] = c[1];
+            pixels[i + 2] = c[2];
+            pixels[i + 3] = 255;
+          }
+        }
+        updatePixels();
+      }
+      function updateCardId(value) {
+        params.cardId = value;
+        regenerate();
+      }
+      function updateParam(n, v) {
+        params[n] = parseFloat(v);
+        document.getElementById(`${n}-value`).textContent = v;
+        regenerate();
+      }
+      function updateSeed() {
+        const v = parseInt(document.getElementById('seed-input').value, 10);
+        if (Number.isFinite(v) && v > 0) {
+          params.seed = v;
+          document.getElementById('jump-input').value = v;
+          regenerate();
+        }
+      }
+      function previousSeed() {
+        params.seed = Math.max(1, params.seed - 1);
+        syncSeed();
+      }
+      function nextSeed() {
+        params.seed += 1;
+        syncSeed();
+      }
+      function randomSeedAndUpdate() {
+        params.seed = Math.floor(Math.random() * 999999) + 1;
+        syncSeed();
+      }
+      function jumpToSeed() {
+        const v = parseInt(document.getElementById('jump-input').value, 10);
+        if (Number.isFinite(v) && v > 0) {
+          params.seed = v;
+          syncSeed();
+        }
+      }
+      function syncSeed() {
+        document.getElementById('seed-input').value = params.seed;
+        document.getElementById('jump-input').value = params.seed;
+        regenerate();
+      }
+      function resetParameters() {
+        params = { ...defaults };
+        document.getElementById('cardId').value = params.cardId;
+        ['frequency', 'swirl', 'contrast'].forEach((k) => {
+          document.getElementById(k).value = params[k];
+          document.getElementById(`${k}-value`).textContent = params[k];
+        });
+        syncSeed();
+      }
+      function downloadPng() {
+        saveCanvas(`card-${params.cardId}-seed-${params.seed}`, 'png');
+      }
+    </script>
+  </body>
+</html>

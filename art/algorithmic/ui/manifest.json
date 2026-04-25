@@ -1,0 +1,7 @@
+{
+  "target": "ui",
+  "baseSeed": 44071,
+  "size": { "width": 1600, "height": 900 },
+  "ids": ["village", "map", "combat", "reward"],
+  "outputPattern": "ui-{id}.png"
+}

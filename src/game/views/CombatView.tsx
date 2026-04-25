@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { HeartPulse, Shield } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { combatBalance } from '../../content/run';
-import { cards, enemies } from '../../gameData';
+import { cards, enemies, getUiBackgroundUrl } from '../../gameData';
+import type { CSSProperties } from 'react';
 import { CardButton } from '../CardButton';
 import {
   enemyBlockStatPulse,
@@ -15,6 +16,7 @@ import {
 } from '../combatMotionPresets';
 import { getCombatPanelAnimation } from '../getCombatPanelAnimation';
 import { MotionScreen } from '../MotionScreen';
+import { RunDeckInspector } from '../RunDeckInspector';
 import { fastFade, staggerList } from '../uiConstants';
 import type { ViewProps } from '../viewProps';
 
@@ -38,6 +40,11 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
   const intent = enemy.intents[combat.enemyIntentIndex % enemy.intents.length];
   const nextIntent = enemy.intents[(combat.enemyIntentIndex + 1) % enemy.intents.length];
   const energySlots = maxEnergySlots(combat, run);
+  const [showDeck, setShowDeck] = useState(false);
+  const objective = combat.puzzleObjective;
+  const watchtowerLevel = state.village.buildingLevels.watchtower;
+  const objectiveHint =
+    watchtowerLevel >= 1 ? objective?.hint : objective ? 'Read the enemy rhythm and answer with timing.' : undefined;
 
   const tiltBySlotRef = useRef(new Map<string, number>());
   useEffect(() => {
@@ -60,7 +67,15 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
   const enemyPulse = pulse?.target === 'enemy' ? pulse.type : undefined;
 
   return (
-    <MotionScreen className='screen combat-screen' reduceMotion={reduceMotion}>
+    <MotionScreen
+      className='screen combat-screen'
+      reduceMotion={reduceMotion}
+      style={
+        getUiBackgroundUrl('combat')
+          ? ({ '--screen-bg': `url("${getUiBackgroundUrl('combat')}")` } as CSSProperties)
+          : undefined
+      }
+    >
       <div className='combat-grid'>
         <motion.section
           className={`panel fighter-panel pulse-${playerPulse ?? 'none'}`}
@@ -104,6 +119,9 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
           >
             End turn
           </motion.button>
+          <button className='text-action' type='button' onClick={() => setShowDeck((prev) => !prev)}>
+            {showDeck ? 'Hide deck' : 'Inspect deck'}
+          </button>
         </motion.section>
 
         <motion.section
@@ -134,6 +152,19 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
           <div className='intent-box'>
             <strong>Intent</strong>
             <span>{intent.label}</span>
+            {objective ? (
+              <>
+                <strong className='intent-next-label'>Puzzle</strong>
+                <span className='intent-next'>
+                  {objectiveHint}
+                  {objective.lastResolution === 'success'
+                    ? ' (last solved)'
+                    : objective.lastResolution === 'failed'
+                      ? ' (last missed)'
+                      : ''}
+                </span>
+              </>
+            ) : null}
             <strong className='intent-next-label'>Next</strong>
             <span className='intent-next'>{nextIntent.label}</span>
           </div>
@@ -184,6 +215,9 @@ const CombatView = ({ state, dispatch, reduceMotion }: ViewProps) => {
           ))}
         </AnimatePresence>
       </motion.section>
+      {showDeck ? (
+        <RunDeckInspector deck={run.deck} recentCardPicks={run.recentCardPicks} compact title='Current run deck' />
+      ) : null}
     </MotionScreen>
   );
 };

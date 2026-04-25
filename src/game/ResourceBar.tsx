@@ -29,7 +29,7 @@ export const ResourceBar = ({ state, reduceMotion }: ResourceBarProps) => {
       ))}
       {run ? (
         <div className='resource-pill run-hp'>
-          <span>Warden HP</span>
+          <span>{run.hero === 'ember' ? 'Ember HP' : 'Warden HP'}</span>
           <strong>
             {run.hp}/{run.maxHp}
           </strong>

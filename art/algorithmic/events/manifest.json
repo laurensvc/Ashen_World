@@ -1,0 +1,7 @@
+{
+  "target": "events",
+  "baseSeed": 22063,
+  "size": { "width": 1024, "height": 512 },
+  "ids": ["scout", "marrowWell", "cinderPilgrim", "waystoneMerchants", "ashHermit"],
+  "outputPattern": "event-{id}.png"
+}
